@@ -39,7 +39,7 @@ public:
         }
         catch (const std::exception& error)
         {
-            std::fprintf(stderr, "plan rejected: %s\n", error.what());
+            Report(std::string("plan rejected: ") + error.what());
         }
         return S_OK;
     }
@@ -73,7 +73,7 @@ public:
             if (FAILED(result)) return result;
             if (mvid != plannedMvid)
             {
-                std::fprintf(stderr, "plan rejected: loaded module MVID mismatch\n");
+                Report("plan rejected: loaded module MVID mismatch");
                 return S_OK;
             }
 
@@ -140,11 +140,26 @@ public:
     }
 
 private:
+    static void Report(const std::string& message)
+    {
+        std::fprintf(stderr, "%s\n", message.c_str());
+        wchar_t path[32768];
+        const auto length = GetEnvironmentVariableW(L"WINDOWS_CHAOS_DIAGNOSTICS", path, _countof(path));
+        if (!length || length >= _countof(path)) return;
+        const HANDLE log = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (log == INVALID_HANDLE_VALUE) return;
+        const auto line = message + "\r\n";
+        DWORD written;
+        WriteFile(log, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
+        CloseHandle(log);
+    }
+
     void LoadPlan()
     {
         wchar_t path[32768];
         const DWORD length = GetEnvironmentVariableW(L"WINDOWS_CHAOS_PLAN", path, _countof(path));
-        if (length == 0) return;
+        if (length == 0) { Report("no plan path"); return; }
         if (length >= _countof(path)) throw std::runtime_error("plan path too long");
 
         std::ifstream input{std::filesystem::path(path), std::ios::binary | std::ios::ate};
@@ -220,11 +235,17 @@ private:
         if (rules.empty())
             throw std::runtime_error("expected at least one rule");
 
+        wchar_t serviceFlag[2]{};
+        const bool serviceProbe = !externalSample && GetEnvironmentVariableW(
+            L"WINDOWS_CHAOS_SERVICE_PROBE", serviceFlag, _countof(serviceFlag)) == 1 && serviceFlag[0] == L'1';
+        if (serviceProbe && rules.size() != 1)
+            throw std::runtime_error("service probe requires one rule");
+        deferMetadata = externalSample || serviceProbe;
         ATL::CComPtr<IMetaDataImport> metadata;
         mdTypeDef owner{};
         PCCOR_SIGNATURE wrapperSignature{};
         ULONG wrapperSignatureSize{};
-        if (!externalSample)
+        if (!deferMetadata)
         {
             ATL::CComPtr<IMetaDataDispenser> dispenser;
             HRESULT result = MetaDataGetDispenser(CLSID_CorMetaDataDispenser, IID_IMetaDataDispenser,
@@ -255,7 +276,7 @@ private:
             PCCOR_SIGNATURE signature;
             ULONG signatureSize;
             DWORD attributes;
-            if (!externalSample && (FAILED(metadata->GetMethodProps(token, &declaringType, nullptr, 0, nullptr,
+            if (!deferMetadata && (FAILED(metadata->GetMethodProps(token, &declaringType, nullptr, 0, nullptr,
                     &attributes, &signature, &signatureSize, nullptr, nullptr)) ||
                 (declaringType != owner || !IsMdStatic(attributes) ||
                     signatureSize != wrapperSignatureSize ||
@@ -274,7 +295,7 @@ private:
         }
 
         planReady = true;
-        std::fprintf(stderr, "plan accepted: %zu rule(s) validated\n", rules.size());
+        Report("plan accepted: " + std::to_string(rules.size()) + " rule(s) validated");
     }
 
     std::pair<mdMethodDef, std::wstring> ValidateRule(const nlohmann::json& plan, const std::string& hash)
@@ -329,7 +350,7 @@ private:
             throw std::runtime_error("invalid MVID");
 
         if (plan.at("sha256") != hash) throw std::runtime_error("executable SHA-256 mismatch");
-        if (externalSample && plannedRules.empty()) plannedMvid = ruleMvid;
+        if (deferMetadata && plannedRules.empty()) plannedMvid = ruleMvid;
         if (plannedMvid != ruleMvid) throw std::runtime_error("rule MVID does not match executable");
         return {token.get<mdMethodDef>(), std::move(runtimeRule)};
     }
@@ -403,6 +424,15 @@ private:
             mdTypeDef program;
             result = import->FindTypeDefByName(L"Program", mdTokenNil, &program);
             if (FAILED(result)) return result;
+            if (deferMetadata)
+            {
+                mdTypeDef owner;
+                DWORD flags;
+                result = import->GetMethodProps(target, &owner, nullptr, 0, nullptr, &flags,
+                    nullptr, nullptr, nullptr, nullptr);
+                if (FAILED(result)) return result;
+                if (owner != program || !IsMdStatic(flags)) return E_FAIL;
+            }
             result = import->FindMethod(program, L"FailBeforeSend", nullptr, 0, &helper);
         }
         if (FAILED(result)) return result;
@@ -421,7 +451,7 @@ private:
         if (FAILED(result)) return result;
 
         result = graph->Replace(call, replacement);
-        if (SUCCEEDED(result)) std::fprintf(stderr, "IL rewritten: methodToken=%u\n", static_cast<unsigned>(target));
+        if (SUCCEEDED(result)) Report("IL rewritten: methodToken=" + std::to_string(target));
         return result;
     }
 
@@ -453,6 +483,7 @@ private:
 
     std::wstring targetName;
     bool externalSample = false;
+    bool deferMetadata = false;
     std::map<mdMethodDef, DWORD> plannedOffsets;
     ATL::CComPtr<IProfilerStringManager> strings;
     std::wstring executable;

@@ -74,3 +74,18 @@ Selected の上限を2、Other の上限を1に設定し、同じJSON計画で�
 ## 三箇所の試験
 
 SourceMapの候補から Selected、Other、Third を選んで一つのJSONを生成し、ランチャーに -ThreeSites を渡します。Selected は #ConfirmOrder を2回、Other は #ConfirmOrder を1回、Third は #OtherOrder を1回まで失敗させる条件に設定しました。同じPIDで箇所別に2回、1回、1回発火し、条件不一致と上限到達後の呼び出しは成功しました。DBへの記録は2件で、試験前後のEXEのSHA-256は一致しました。
+
+## ChaosTestのWindowsサービスで一回だけ発火
+
+SqlTarget.exe を --service 付きで手動起動の専用サービス WindowsChaosAgentProbe に登録します。SourceMapで Program.Selected の計画を生成し、maxFirings が1のまま verify を実行します。ゲストへ転送したEXEのSHA-256も計画に照合します。
+
+プロファイラーの設定は専用サービスのレジストリキー HKLM:\SYSTEM\CurrentControlSet\Services\WindowsChaosAgentProbe の Environment（REG_MULTI_SZ）に設定します。[通常の起動設定](../ProfilerRewrite/README.md#起動条件と結果)に加え、WINDOWS_CHAOS_PLAN に計画の絶対パス、WINDOWS_CHAOS_SERVICE_PROBE に1、WINDOWS_CHAOS_DIAGNOSTICS にAgentの診断ログの絶対パスを指定します。サービスの開始引数には試験ログの絶対パスを渡します。試験後にサービスを停止し、登録を削除します。
+
+ChaosTestでは初期化時のメタデータディスペンサー取得が失敗したため、この専用のサービスモードは一つのルールに限定し、ロード済みモジュールでMVID、メソッドと呼び出し命令を照合します。サービスは接続を開かずに同じコマンドを二度呼びます。実DBへの接続が不要で、元のAPIに到達したかを通常の接続未開放エラーで判別できます。
+
+| 起動 | 1回目 | 2回目 | Agent発火 |
+|---|---|---|---:|
+| プロファイラー無効 | 接続未開放エラー | 接続未開放エラー | 0 |
+| 検証済み計画あり | 注入したTimeoutException | 接続未開放エラー | 1 |
+
+SCMでRunning、Agentログで計画受理とIL書換え、サービスログで発火1回を確認しました。停止後に登録がないことも確認しました。実DBを使う既存Windowsサービスでの動作は未検証です。

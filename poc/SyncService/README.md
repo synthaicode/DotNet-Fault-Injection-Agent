@@ -42,4 +42,4 @@ volatile: first read=False; recheck after publication=True
 
 初回の状態待ちでエラーが起き、サービスが稼働したまま削除待ちになりました。その状態では通常の停止要求が通らなかったため、PIDとEXEの絶対パスを照合して専用プロセスを停止し、SCMで登録がなくなったことを確認しました。試験ログはゲスト内に保持しています。
 
-書き手の終了をJoinで待たずにポーリングする場合の可視性、Windowsサービス起動時のAgentのロード・発火は未検証です。
+書き手の終了をJoinで待たずにポーリングする場合の可視性は未検証です。Windowsサービス起動時のAgentロードと発火は[専用のSQL検証サービス](../SqlTarget/README.md#chaostestのwindowsサービスで一回だけ発火)で確認しました。

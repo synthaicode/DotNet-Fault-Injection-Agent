@@ -2,6 +2,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.SqlClient;
+using System.IO;
+using ServiceBase = System.ServiceProcess.ServiceBase;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,6 +43,12 @@ internal static class Program
 
     private static void Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--service")
+        {
+            ServiceBase.Run(new ServiceProbe());
+            return;
+        }
+
         if (args.Length == 1 && args[0] == "--concurrent")
         {
             RunConcurrent();
@@ -86,6 +94,49 @@ internal static class Program
             using (var count = new SqlCommand("SELECT COUNT(*) FROM #Received", connection))
             {
                 Console.WriteLine("DB rows: " + count.ExecuteScalar());
+            }
+        }
+    }
+
+    private sealed class ServiceProbe : ServiceBase
+    {
+        internal ServiceProbe()
+        {
+            ServiceName = "WindowsChaosAgentProbe";
+        }
+
+        protected override void OnStart(string[] args)
+        {
+            if (args.Length != 1 || !Path.IsPathRooted(args[0]))
+                throw new ArgumentException("Pass an absolute log path.");
+            using (var output = new StreamWriter(args[0]))
+            using (var connection = new SqlConnection(@"Server=(localdb)\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=true"))
+            using (var command = new SqlCommand("#ConfirmOrder", connection))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                Console.SetError(output);
+                try
+                {
+                    for (int attempt = 1; attempt <= 2; attempt++)
+                    {
+                        try
+                        {
+                            Selected(command);
+                        }
+                        catch (TimeoutException error)
+                        {
+                            output.WriteLine($"attempt={attempt} TimeoutException: {error.Message}");
+                        }
+                        catch (InvalidOperationException error)
+                        {
+                            output.WriteLine($"attempt={attempt} InvalidOperationException: {error.Message}");
+                        }
+                    }
+                }
+                finally
+                {
+                    Console.SetError(TextWriter.Null);
+                }
             }
         }
     }

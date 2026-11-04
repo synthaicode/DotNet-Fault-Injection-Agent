@@ -5,4 +5,5 @@
     <PlatformTarget>x64</PlatformTarget>
     <DebugType>portable</DebugType>
   </PropertyGroup>
+  <ItemGroup><Reference Include="System.ServiceProcess" /></ItemGroup>
 </Project>
