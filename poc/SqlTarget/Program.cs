@@ -110,8 +110,8 @@ internal static class Program
         protected override void OnStart(string[] args)
         {
             if (args.Length < 1 || args.Length > 3 || !Path.IsPathRooted(args[0]) ||
-                (args.Length == 3 && args[2] != "overlap"))
-                throw new ArgumentException("Pass an absolute log path and optionally a SQL Server instance and overlap mode.");
+                (args.Length == 3 && args[2] != "overlap" && args[2] != "retry"))
+                throw new ArgumentException("Pass an absolute log path and optionally a SQL Server instance and overlap or retry mode.");
             var settings = new SqlConnectionStringBuilder
             {
                 DataSource = args.Length >= 2 ? args[1] : @"(localdb)\MSSQLLocalDB",
@@ -119,7 +119,8 @@ internal static class Program
                 IntegratedSecurity = true,
                 ConnectTimeout = 10
             };
-            if (args.Length == 3)
+            bool retry = args.Length == 3 && args[2] == "retry";
+            if (args.Length == 3 && !retry)
             {
                 using (var output = new StreamWriter(args[0]))
                     RunOverlap(settings.ConnectionString, TextWriter.Synchronized(output));
@@ -130,7 +131,7 @@ internal static class Program
             using (var connection = new SqlConnection(settings.ConnectionString))
             using (var command = new SqlCommand("#ConfirmOrder", connection))
             {
-                if (args.Length == 2)
+                if (args.Length >= 2)
                 {
                     connection.Open();
                     using (var setup = connection.CreateCommand())
@@ -147,15 +148,17 @@ internal static class Program
                 {
                     for (int attempt = 1; attempt <= 2; attempt++)
                     {
+                        bool shouldRetry = false;
                         try
                         {
                             output.WriteLine($"attempt={attempt} success: rows affected={Selected(command)}");
                         }
-                        catch (TimeoutException error)
+                        catch (TimeoutException error) when (!retry || attempt == 1)
                         {
+                            shouldRetry = retry;
                             output.WriteLine($"attempt={attempt} TimeoutException: {error.Message}");
                         }
-                        catch (InvalidOperationException error)
+                        catch (InvalidOperationException error) when (!retry)
                         {
                             output.WriteLine($"attempt={attempt} InvalidOperationException: {error.Message}");
                         }
@@ -164,6 +167,13 @@ internal static class Program
                         {
                             using (var count = new SqlCommand("SELECT COUNT(*) FROM #Received", connection))
                                 output.WriteLine($"attempt={attempt} DB rows={count.ExecuteScalar()}");
+                        }
+
+                        if (retry)
+                        {
+                            if (!shouldRetry)
+                                break;
+                            output.WriteLine("retry: scheduled after TimeoutException");
                         }
                     }
                 }
