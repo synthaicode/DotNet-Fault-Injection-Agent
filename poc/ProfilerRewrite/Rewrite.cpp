@@ -157,11 +157,28 @@ private:
             !plan.at("version").is_number_unsigned() || plan.at("version") != 1 ||
             !plan.at("ilOffset").is_number_unsigned() || plan.at("ilOffset") != 1 ||
             plan.at("call") != "System.Data.Common.DbCommand.ExecuteNonQuery()" ||
-            plan.at("fault") != "timeout-before-send" ||
-            plan.at("server") != "(localdb)\\MSSQLLocalDB" || plan.at("database") != "tempdb" ||
-            plan.at("procedure") != "#ConfirmOrder" ||
-            !plan.at("maxFirings").is_number_unsigned() || plan.at("maxFirings") != 1)
+            plan.at("fault") != "timeout-before-send")
             throw std::runtime_error("unsupported plan fields or values");
+
+        const auto limit = plan.at("maxFirings");
+        if (!limit.is_number_unsigned() || limit.get<uint64_t>() > INT_MAX)
+            throw std::runtime_error("invalid maxFirings");
+        std::wstring runtimeRule;
+        for (const auto key : {"server", "database", "procedure"})
+        {
+            const auto value = plan.at(key).get<std::string>();
+            if (value.empty() || value.size() > 1024 ||
+                value.find_first_of("\r\n") != std::string::npos || value.find('\0') != std::string::npos)
+                throw std::runtime_error("invalid rule condition");
+
+            wchar_t decoded[1024];
+            const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                static_cast<int>(value.size()), decoded, _countof(decoded));
+            if (count == 0) throw std::runtime_error("invalid rule encoding");
+            runtimeRule.append(decoded, count);
+            runtimeRule += L'\n';
+        }
+        runtimeRule += std::to_wstring(limit.get<int>());
 
         const auto token = plan.at("methodToken");
         if (!token.is_number_unsigned() || token.get<uint64_t>() < 0x06000001 ||
@@ -206,6 +223,9 @@ private:
             hash += "0123456789ABCDEF"[byte & 15];
         }
         if (plan.at("sha256") != hash) throw std::runtime_error("executable SHA-256 mismatch");
+
+        if (!SetEnvironmentVariableW(L"WINDOWS_CHAOS_VALIDATED_RULE", runtimeRule.c_str()))
+            throw std::runtime_error("cannot publish validated rule");
 
         plannedMethod = token.get<mdMethodDef>();
         planReady = true;
