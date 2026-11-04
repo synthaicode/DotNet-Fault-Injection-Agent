@@ -85,6 +85,13 @@ try {
     $output = $stdout.GetAwaiter().GetResult()
     $diagnostics = $stderr.GetAwaiter().GetResult()
     $lines = $diagnostics -split '\r?\n'
+    $counts = [ordered]@{}
+    foreach ($line in $lines) {
+        if ($line -cmatch '^fault fired: methodToken=(\d+) ') {
+            $token = $Matches[1]
+            $counts[$token] = [int]$counts[$token] + 1
+        }
+    }
     [pscustomobject]@{
         Target = $targetFile.FullName
         Plan = $planPath
@@ -94,6 +101,7 @@ try {
         PlanRejected = [bool]($lines -cmatch '^plan rejected:')
         IlRewritten = [bool]($lines -cmatch '^IL rewritten:')
         Firings = @($lines -cmatch '^fault fired:').Count
+        FiringsByMethod = $counts
         ControlReplies = $replies
         Output = $output.TrimEnd()
         Diagnostics = $diagnostics.TrimEnd()

@@ -31,3 +31,15 @@ dotnet run --project poc/SourceMap -- $source $exe $refs 101 ./selected.json
 候補は単一のreturn文で呼び出す検証用の形に限定しています。実プロジェクトの読み込み、一般的なILの対応付け、AI対話、外部Agentによる管理、既存サービスでの動作は未実装です。
 
 AIを使って利用者の指定から計画を作る場合は、[AIによる注入計画の作成](AI-plan-guide.md)を参照してください。
+
+## 複数箇所の計画
+
+候補一覧から二つの行を選び、行番号をカンマでつないで渡します。
+
+```powershell
+dotnet run --project poc/SourceMap -- $source $exe $refs '169,175' ./multi.json
+```
+
+行番号は手元の候補一覧に合わせます。出力は version が2のオブジェクトで、rules 配列の各要素に従来のバージョン1の計画が入ります。各要素の server、database、procedure、maxFirings を独立に設定できます。単一行の指定では従来形式を出力します。
+
+PoCで受理するのは、同じSqlTarget.exeにある異なるメソッドへの最大2ルールです。プロファイラーはすべてのルールの値、EXEのハッシュ、MVID、対象メソッドを事前照合します。いずれかが不正なら計画を拒否します。実際のIL命令はメソッドごとのJIT時にも確認します。

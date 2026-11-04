@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <set>
 
+STDAPI MetaDataGetDispenser(REFCLSID, REFIID, LPVOID*);
+
 class RewriteModule : public ATL::CAtlDllModuleT<RewriteModule> {};
 static RewriteModule module;
 
@@ -63,7 +65,7 @@ public:
             if (!planReady) return S_OK;
             mdMethodDef token;
             result = method->GetMethodToken(&token);
-            if (FAILED(result) || token != plannedMethod) return result;
+            if (FAILED(result) || (token != plannedMethods[0] && token != plannedMethods[1])) return result;
 
             GUID mvid;
             result = module->GetMVID(&mvid);
@@ -146,51 +148,19 @@ private:
         input.seekg(0);
 
         bool duplicate = false;
-        std::set<std::string> keys;
-        auto plan = nlohmann::json::parse(input, [&](int depth, auto event, auto& value)
+        std::vector<std::set<std::string>> keys;
+        auto plan = nlohmann::json::parse(input, [&](int, auto event, auto& value)
         {
-            if (depth == 1 && event == nlohmann::json::parse_event_t::key)
-                duplicate |= !keys.insert(value.template get<std::string>()).second;
+            if (event == nlohmann::json::parse_event_t::object_start)
+                keys.emplace_back();
+            if (event == nlohmann::json::parse_event_t::key)
+                duplicate |= !keys.back().insert(value.template get<std::string>()).second;
+            if (event == nlohmann::json::parse_event_t::object_end)
+                keys.pop_back();
             return true;
         });
-        if (duplicate || !plan.is_object() || plan.size() != 11 ||
-            !plan.at("version").is_number_unsigned() || plan.at("version") != 1 ||
-            !plan.at("ilOffset").is_number_unsigned() || plan.at("ilOffset") != 1 ||
-            plan.at("call") != "System.Data.Common.DbCommand.ExecuteNonQuery()" ||
-            plan.at("fault") != "timeout-before-send")
-            throw std::runtime_error("unsupported plan fields or values");
-
-        const auto limit = plan.at("maxFirings");
-        if (!limit.is_number_unsigned() || limit.get<uint64_t>() > INT_MAX)
-            throw std::runtime_error("invalid maxFirings");
-        std::wstring runtimeRule;
-        for (const auto key : {"server", "database", "procedure"})
-        {
-            const auto value = plan.at(key).get<std::string>();
-            if (value.empty() || value.size() > 1024 ||
-                value.find_first_of("\r\n") != std::string::npos || value.find('\0') != std::string::npos)
-                throw std::runtime_error("invalid rule condition");
-
-            wchar_t decoded[1024];
-            const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-                static_cast<int>(value.size()), decoded, _countof(decoded));
-            if (count == 0) throw std::runtime_error("invalid rule encoding");
-            runtimeRule.append(decoded, count);
-            runtimeRule += L'\n';
-        }
-        runtimeRule += std::to_wstring(limit.get<int>());
-
-        const auto token = plan.at("methodToken");
-        if (!token.is_number_unsigned() || token.get<uint64_t>() < 0x06000001 ||
-            token.get<uint64_t>() > 0x06ffffff)
-            throw std::runtime_error("invalid method token");
-
-        const auto mvid = plan.at("mvid").get<std::string>();
-        if (mvid.size() != 36) throw std::runtime_error("invalid MVID");
-        const std::wstring guid = L"{" + std::wstring(mvid.begin(), mvid.end()) + L"}";
-        if (FAILED(CLSIDFromString(guid.c_str(), &plannedMvid)))
-            throw std::runtime_error("invalid MVID");
-
+        if (duplicate || !plan.is_object() || !plan.at("version").is_number_unsigned())
+            throw std::runtime_error("invalid plan object");
         const DWORD exeLength = GetModuleFileNameW(nullptr, path, _countof(path));
         if (exeLength == 0 || exeLength >= _countof(path))
             throw std::runtime_error("cannot resolve process executable");
@@ -222,17 +192,104 @@ private:
             hash += "0123456789ABCDEF"[byte >> 4];
             hash += "0123456789ABCDEF"[byte & 15];
         }
-        if (plan.at("sha256") != hash) throw std::runtime_error("executable SHA-256 mismatch");
+        auto rules = nlohmann::json::array({plan});
+        if (plan.at("version") == 2)
+        {
+            if (plan.size() != 2 || !plan.at("rules").is_array())
+                throw std::runtime_error("invalid multi-rule plan");
+            rules = plan.at("rules");
+        }
+        if (rules.empty() || rules.size() > 2)
+            throw std::runtime_error("expected one or two rules");
 
-        if (!SetEnvironmentVariableW(L"WINDOWS_CHAOS_VALIDATED_RULE", runtimeRule.c_str()))
-            throw std::runtime_error("cannot publish validated rule");
+        ATL::CComPtr<IMetaDataDispenser> dispenser;
+        HRESULT result = MetaDataGetDispenser(CLSID_CorMetaDataDispenser, IID_IMetaDataDispenser,
+            reinterpret_cast<void**>(&dispenser));
+        if (FAILED(result)) throw std::runtime_error("cannot open metadata dispenser");
+        ATL::CComPtr<IMetaDataImport> metadata;
+        result = dispenser->OpenScopeOnMemory(bytes.data(), static_cast<ULONG>(bytes.size()), ofRead,
+            IID_IMetaDataImport, reinterpret_cast<IUnknown**>(&metadata));
+        if (FAILED(result)) throw std::runtime_error("cannot read target metadata");
 
-        plannedMethod = token.get<mdMethodDef>();
+        mdTypeDef owner;
+        mdMethodDef selected;
+        mdMethodDef other;
+        GUID imageMvid;
+        if (FAILED(metadata->GetScopeProps(nullptr, 0, nullptr, &imageMvid)) ||
+            FAILED(metadata->FindTypeDefByName(L"Program", mdTokenNil, &owner)) ||
+            FAILED(metadata->FindMethod(owner, L"Selected", nullptr, 0, &selected)) ||
+            FAILED(metadata->FindMethod(owner, L"Other", nullptr, 0, &other)))
+            throw std::runtime_error("unexpected fixture metadata");
+
+        std::wstring runtimeRules[2];
+        for (size_t slot = 0; slot < rules.size(); ++slot)
+        {
+            runtimeRules[slot] = ValidateRule(rules[slot], hash, slot);
+            if (plannedMvid != imageMvid ||
+                (plannedMethods[slot] != selected && plannedMethods[slot] != other))
+                throw std::runtime_error("rule target does not match fixture metadata");
+        }
+
+        if (!SetEnvironmentVariableW(L"WINDOWS_CHAOS_VALIDATED_RULE_0", runtimeRules[0].c_str()) ||
+            !SetEnvironmentVariableW(L"WINDOWS_CHAOS_VALIDATED_RULE_1", runtimeRules[1].c_str()))
+            throw std::runtime_error("cannot publish validated rules");
+
         planReady = true;
-        std::fprintf(stderr, "plan accepted: executable and rule validated\n");
+        std::fprintf(stderr, "plan accepted: %zu rule(s) validated\n", rules.size());
     }
 
-    static HRESULT RedirectSqlCall(IMethodInfo* method, IInstructionGraph* graph, IInstruction* first)
+    std::wstring ValidateRule(const nlohmann::json& plan, const std::string& hash, size_t slot)
+    {
+        if (!plan.is_object() || plan.size() != 11 ||
+            !plan.at("version").is_number_unsigned() || plan.at("version") != 1 ||
+            !plan.at("ilOffset").is_number_unsigned() || plan.at("ilOffset") != 1 ||
+            plan.at("call") != "System.Data.Common.DbCommand.ExecuteNonQuery()" ||
+            plan.at("fault") != "timeout-before-send")
+            throw std::runtime_error("unsupported plan fields or values");
+
+        const auto limit = plan.at("maxFirings");
+        if (!limit.is_number_unsigned() || limit.get<uint64_t>() > INT_MAX)
+            throw std::runtime_error("invalid maxFirings");
+        std::wstring runtimeRule;
+        for (const auto key : {"server", "database", "procedure"})
+        {
+            const auto value = plan.at(key).get<std::string>();
+            if (value.empty() || value.size() > 1024 ||
+                value.find_first_of("\r\n") != std::string::npos || value.find('\0') != std::string::npos)
+                throw std::runtime_error("invalid rule condition");
+
+            wchar_t decoded[1024];
+            const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                static_cast<int>(value.size()), decoded, _countof(decoded));
+            if (count == 0) throw std::runtime_error("invalid rule encoding");
+            runtimeRule.append(decoded, count);
+            runtimeRule += L'\n';
+        }
+        runtimeRule += std::to_wstring(limit.get<int>());
+
+        const auto token = plan.at("methodToken");
+        if (!token.is_number_unsigned() || token.get<uint64_t>() < 0x06000001 ||
+            token.get<uint64_t>() > 0x06ffffff)
+            throw std::runtime_error("invalid method token");
+
+        GUID ruleMvid;
+        const auto mvid = plan.at("mvid").get<std::string>();
+        if (mvid.size() != 36) throw std::runtime_error("invalid MVID");
+        const std::wstring guid = L"{" + std::wstring(mvid.begin(), mvid.end()) + L"}";
+        if (FAILED(CLSIDFromString(guid.c_str(), &ruleMvid)))
+            throw std::runtime_error("invalid MVID");
+
+        if (plan.at("sha256") != hash) throw std::runtime_error("executable SHA-256 mismatch");
+        if (slot == 0)
+            plannedMvid = ruleMvid;
+        else if (plannedMvid != ruleMvid || plannedMethods[0] == token.get<mdMethodDef>())
+            throw std::runtime_error("rules must target distinct methods in the same module");
+        plannedMethods[slot] = token.get<mdMethodDef>();
+        runtimeRule += L'\n';
+        runtimeRule += std::to_wstring(plannedMethods[slot]);
+        return runtimeRule;
+    }
+    HRESULT RedirectSqlCall(IMethodInfo* method, IInstructionGraph* graph, IInstruction* first)
     {
         ATL::CComPtr<IInstruction> call;
         HRESULT result = first->GetNextInstruction(&call);
@@ -288,8 +345,12 @@ private:
         result = import->FindTypeDefByName(L"Program", mdTokenNil, &program);
         if (FAILED(result)) return result;
 
+        mdMethodDef target;
+        result = method->GetMethodToken(&target);
+        if (FAILED(result)) return result;
+        const auto slot = target == plannedMethods[0] ? 0 : 1;
         mdMethodDef helper;
-        result = import->FindMethod(program, L"FailBeforeSend", nullptr, 0, &helper);
+        result = import->FindMethod(program, slot == 0 ? L"FailBeforeSend" : L"FailBeforeSendSecond", nullptr, 0, &helper);
         if (FAILED(result)) return result;
 
         ATL::CComPtr<IInstructionFactory> factory;
@@ -300,14 +361,14 @@ private:
         result = factory->CreateTokenOperandInstruction(Cee_Call, helper, &replacement);
         if (FAILED(result)) return result;
         result = graph->Replace(call, replacement);
-        if (SUCCEEDED(result)) std::fprintf(stderr, "IL rewritten: SQL call redirected\n");
+        if (SUCCEEDED(result)) std::fprintf(stderr, "IL rewritten: methodToken=%u\n", static_cast<unsigned>(target));
         return result;
     }
 
     ATL::CComPtr<IProfilerStringManager> strings;
     std::wstring executable;
     GUID plannedMvid{};
-    mdMethodDef plannedMethod{};
+    mdMethodDef plannedMethods[2]{};
     bool planReady = false;
 };
 

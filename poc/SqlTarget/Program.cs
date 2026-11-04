@@ -7,16 +7,20 @@ using System.Threading.Tasks;
 
 internal static class Program
 {
-    private static class InjectionRule
+    private sealed class InjectionRule
     {
-        internal static readonly string[] Fields =
-            (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE") ?? "").Split('\n');
-        private static int remaining = Fields.Length == 4 && int.TryParse(Fields[3], out int limit)
-            ? limit : 0;
+        internal readonly string[] Fields;
+        private int remaining;
+
+        internal InjectionRule(int slot)
+        {
+            Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + slot) ?? "").Split('\n');
+            remaining = Fields.Length == 5 && int.TryParse(Fields[3], out int limit) ? limit : 0;
+        }
 
         internal static bool Enabled = true;
 
-        internal static bool TryConsume()
+        internal bool TryConsume()
         {
             int count;
             do
@@ -29,6 +33,12 @@ internal static class Program
 
             return true;
         }
+    }
+
+    private static class Rules
+    {
+        internal static readonly InjectionRule First = new InjectionRule(0);
+        internal static readonly InjectionRule Second = new InjectionRule(1);
     }
 
     private static void Main(string[] args)
@@ -168,17 +178,27 @@ internal static class Program
     // The profiler redirects the selected call to this test-only helper.
     private static int FailBeforeSend(SqlCommand command)
     {
-        var fields = InjectionRule.Fields;
-        if (InjectionRule.Enabled && fields.Length == 4 &&
+        return ApplyRule(command, Rules.First);
+    }
+
+    private static int FailBeforeSendSecond(SqlCommand command)
+    {
+        return ApplyRule(command, Rules.Second);
+    }
+
+    private static int ApplyRule(SqlCommand command, InjectionRule rule)
+    {
+        var fields = rule.Fields;
+        if (InjectionRule.Enabled && fields.Length == 5 &&
             command != null &&
             command.Connection != null &&
             command.CommandType == CommandType.StoredProcedure &&
             string.Equals(command.Connection.DataSource, fields[0], StringComparison.OrdinalIgnoreCase) &&
             string.Equals(command.Connection.Database, fields[1], StringComparison.Ordinal) &&
             string.Equals(command.CommandText, fields[2], StringComparison.Ordinal) &&
-            InjectionRule.TryConsume())
+            rule.TryConsume())
         {
-            Console.Error.WriteLine("fault fired: timeout-before-send");
+            Console.Error.WriteLine("fault fired: methodToken=" + fields[4] + " timeout-before-send");
             throw new TimeoutException("Injected before ExecuteNonQuery.");
         }
 
