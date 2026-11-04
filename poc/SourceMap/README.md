@@ -64,7 +64,7 @@ dotnet run --project poc/SourceMap -- $project $exe $refs verify ./order-plan.js
 
 recommend は候補を囲む例外処理を表示し、送信前の失敗で観測する挙動を提案します。AIはソースから実際の復旧経路と影響範囲を確認し、試験条件を利用者と確定してから計画の条件値を更新します。生成時の条件は検証用の既定値です。静的解析で示した候補は、障害を実際に起こして確かめる仮説として扱います。
 
-MicrosoftのWide World Importers注文投入サンプルをソース無変更でビルドし、PerformSqlTask の ExecuteNonQuery を候補として特定しました。生成した計画を verify で照合でき、ILオフセットを1ずらした計画は拒否されました。現在のプロファイラーは専用SqlTarget.exeを対象にしており、この外部サンプルは計画の作成・事前検証まで対応します。
+MicrosoftのWide World Importers注文投入サンプルをソース無変更でビルドし、PerformSqlTask の ExecuteNonQuery を候補として特定しました。生成した計画を verify で照合でき、ILオフセットを1ずらした計画は拒否されました。注文投入サンプルは[専用ホストでの注入試験](../OrderAgentProbe/README.md)にも対応しています。
 
 ## 同期処理のおすすめ試験
 
@@ -84,7 +84,7 @@ recommend で対象箇所、周辺のcatchと代入、介入・観測・合格�
 ./poc/SourceMap/New-ConfirmedPlan.ps1 -Source $project -Executable $exe -References $refs -ConfirmedCandidate 1 -Server $server -Database $db -Procedure 'Website.InsertCustomerOrders' -MaxFirings 1 -OutputPlan ./confirmed.json
 ```
 
-スクリプトは、指定箇所と配布物を照合して計画を生成し、確認済みの条件を設定します。verify の成功後に新規ファイルとして保存します。外部アプリの計画は事前照合用で、現行の注入ランタイムは専用SqlTarget.exeに限定されます。
+スクリプトは、指定箇所と配布物を照合して計画を生成し、確認済みの条件を設定します。verify の成功後に新規ファイルとして保存します。実行対象はSqlTarget.exeと、専用ホスト内の注文投入サンプルです。
 
 ### 注文投入サンプルでの根拠
 

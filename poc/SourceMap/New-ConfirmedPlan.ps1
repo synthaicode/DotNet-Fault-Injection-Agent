@@ -33,7 +33,7 @@ try {
     [pscustomobject]@{
         Plan = $outputPath
         Verified = $true
-        RuntimeScope = 'The PoC runtime currently accepts only the dedicated SqlTarget.exe fixture.'
+        RuntimeScope = 'The PoC runtime supports SqlTarget.exe and the order sample in OrderAgentProbe.exe.'
     }
 }
 finally {
