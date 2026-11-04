@@ -11,6 +11,7 @@
 #include <nlohmann/json.hpp>
 #include <cstdio>
 #include <set>
+#include <map>
 
 STDAPI MetaDataGetDispenser(REFCLSID, REFIID, LPVOID*);
 
@@ -65,7 +66,7 @@ public:
             if (!planReady) return S_OK;
             mdMethodDef token;
             result = method->GetMethodToken(&token);
-            if (FAILED(result) || (token != plannedMethods[0] && token != plannedMethods[1])) return result;
+            if (FAILED(result) || plannedRules.find(token) == plannedRules.end()) return result;
 
             GUID mvid;
             result = module->GetMVID(&mvid);
@@ -144,7 +145,7 @@ private:
 
         std::ifstream input{std::filesystem::path(path), std::ios::binary | std::ios::ate};
         const auto size = input.tellg();
-        if (size <= 0 || size > 8192) throw std::runtime_error("invalid plan file size");
+        if (size <= 0 || size > 65536) throw std::runtime_error("invalid plan file size");
         input.seekg(0);
 
         bool duplicate = false;
@@ -199,8 +200,8 @@ private:
                 throw std::runtime_error("invalid multi-rule plan");
             rules = plan.at("rules");
         }
-        if (rules.empty() || rules.size() > 2)
-            throw std::runtime_error("expected one or two rules");
+        if (rules.empty())
+            throw std::runtime_error("expected at least one rule");
 
         ATL::CComPtr<IMetaDataDispenser> dispenser;
         HRESULT result = MetaDataGetDispenser(CLSID_CorMetaDataDispenser, IID_IMetaDataDispenser,
@@ -213,32 +214,46 @@ private:
 
         mdTypeDef owner;
         mdMethodDef selected;
-        mdMethodDef other;
         GUID imageMvid;
+        PCCOR_SIGNATURE wrapperSignature;
+        ULONG wrapperSignatureSize;
         if (FAILED(metadata->GetScopeProps(nullptr, 0, nullptr, &imageMvid)) ||
             FAILED(metadata->FindTypeDefByName(L"Program", mdTokenNil, &owner)) ||
             FAILED(metadata->FindMethod(owner, L"Selected", nullptr, 0, &selected)) ||
-            FAILED(metadata->FindMethod(owner, L"Other", nullptr, 0, &other)))
+            FAILED(metadata->GetMethodProps(selected, nullptr, nullptr, 0, nullptr, nullptr,
+                &wrapperSignature, &wrapperSignatureSize, nullptr, nullptr)))
             throw std::runtime_error("unexpected fixture metadata");
 
-        std::wstring runtimeRules[2];
-        for (size_t slot = 0; slot < rules.size(); ++slot)
+        plannedMvid = imageMvid;
+        for (const auto& rule : rules)
         {
-            runtimeRules[slot] = ValidateRule(rules[slot], hash, slot);
-            if (plannedMvid != imageMvid ||
-                (plannedMethods[slot] != selected && plannedMethods[slot] != other))
+            auto [token, runtimeRule] = ValidateRule(rule, hash);
+            mdTypeDef declaringType;
+            PCCOR_SIGNATURE signature;
+            ULONG signatureSize;
+            DWORD attributes;
+            if (FAILED(metadata->GetMethodProps(token, &declaringType, nullptr, 0, nullptr,
+                    &attributes, &signature, &signatureSize, nullptr, nullptr)) ||
+                declaringType != owner || !IsMdStatic(attributes) ||
+                signatureSize != wrapperSignatureSize ||
+                std::memcmp(signature, wrapperSignature, signatureSize) != 0)
                 throw std::runtime_error("rule target does not match fixture metadata");
+            if (!plannedRules.emplace(token, std::move(runtimeRule)).second)
+                throw std::runtime_error("rules must target distinct methods");
         }
 
-        if (!SetEnvironmentVariableW(L"WINDOWS_CHAOS_VALIDATED_RULE_0", runtimeRules[0].c_str()) ||
-            !SetEnvironmentVariableW(L"WINDOWS_CHAOS_VALIDATED_RULE_1", runtimeRules[1].c_str()))
-            throw std::runtime_error("cannot publish validated rules");
+        for (const auto& [token, runtimeRule] : plannedRules)
+        {
+            const auto key = L"WINDOWS_CHAOS_VALIDATED_RULE_" + std::to_wstring(token);
+            if (!SetEnvironmentVariableW(key.c_str(), runtimeRule.c_str()))
+                throw std::runtime_error("cannot publish validated rule");
+        }
 
         planReady = true;
         std::fprintf(stderr, "plan accepted: %zu rule(s) validated\n", rules.size());
     }
 
-    std::wstring ValidateRule(const nlohmann::json& plan, const std::string& hash, size_t slot)
+    std::pair<mdMethodDef, std::wstring> ValidateRule(const nlohmann::json& plan, const std::string& hash) const
     {
         if (!plan.is_object() || plan.size() != 11 ||
             !plan.at("version").is_number_unsigned() || plan.at("version") != 1 ||
@@ -280,15 +295,10 @@ private:
             throw std::runtime_error("invalid MVID");
 
         if (plan.at("sha256") != hash) throw std::runtime_error("executable SHA-256 mismatch");
-        if (slot == 0)
-            plannedMvid = ruleMvid;
-        else if (plannedMvid != ruleMvid || plannedMethods[0] == token.get<mdMethodDef>())
-            throw std::runtime_error("rules must target distinct methods in the same module");
-        plannedMethods[slot] = token.get<mdMethodDef>();
-        runtimeRule += L'\n';
-        runtimeRule += std::to_wstring(plannedMethods[slot]);
-        return runtimeRule;
+        if (plannedMvid != ruleMvid) throw std::runtime_error("rule MVID does not match executable");
+        return {token.get<mdMethodDef>(), std::move(runtimeRule)};
     }
+
     HRESULT RedirectSqlCall(IMethodInfo* method, IInstructionGraph* graph, IInstruction* first)
     {
         ATL::CComPtr<IInstruction> call;
@@ -348,9 +358,8 @@ private:
         mdMethodDef target;
         result = method->GetMethodToken(&target);
         if (FAILED(result)) return result;
-        const auto slot = target == plannedMethods[0] ? 0 : 1;
         mdMethodDef helper;
-        result = import->FindMethod(program, slot == 0 ? L"FailBeforeSend" : L"FailBeforeSendSecond", nullptr, 0, &helper);
+        result = import->FindMethod(program, L"FailBeforeSend", nullptr, 0, &helper);
         if (FAILED(result)) return result;
 
         ATL::CComPtr<IInstructionFactory> factory;
@@ -360,6 +369,12 @@ private:
         ATL::CComPtr<IInstruction> replacement;
         result = factory->CreateTokenOperandInstruction(Cee_Call, helper, &replacement);
         if (FAILED(result)) return result;
+        ATL::CComPtr<IInstruction> ruleToken;
+        result = factory->CreateIntOperandInstruction(Cee_Ldc_I4, static_cast<INT32>(target), &ruleToken);
+        if (FAILED(result)) return result;
+        result = graph->InsertBefore(call, ruleToken);
+        if (FAILED(result)) return result;
+
         result = graph->Replace(call, replacement);
         if (SUCCEEDED(result)) std::fprintf(stderr, "IL rewritten: methodToken=%u\n", static_cast<unsigned>(target));
         return result;
@@ -368,7 +383,7 @@ private:
     ATL::CComPtr<IProfilerStringManager> strings;
     std::wstring executable;
     GUID plannedMvid{};
-    mdMethodDef plannedMethods[2]{};
+    std::map<mdMethodDef, std::wstring> plannedRules;
     bool planReady = false;
 };
 

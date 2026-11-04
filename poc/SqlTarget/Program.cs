@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.SqlClient;
 using System.Runtime.CompilerServices;
@@ -12,10 +13,10 @@ internal static class Program
         internal readonly string[] Fields;
         private int remaining;
 
-        internal InjectionRule(int slot)
+        internal InjectionRule(int token)
         {
-            Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + slot) ?? "").Split('\n');
-            remaining = Fields.Length == 5 && int.TryParse(Fields[3], out int limit) ? limit : 0;
+            Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + token) ?? "").Split('\n');
+            remaining = Fields.Length == 4 && int.TryParse(Fields[3], out int limit) ? limit : 0;
         }
 
         internal static bool Enabled = true;
@@ -35,11 +36,8 @@ internal static class Program
         }
     }
 
-    private static class Rules
-    {
-        internal static readonly InjectionRule First = new InjectionRule(0);
-        internal static readonly InjectionRule Second = new InjectionRule(1);
-    }
+    private static readonly ConcurrentDictionary<int, InjectionRule> Rules =
+        new ConcurrentDictionary<int, InjectionRule>();
 
     private static void Main(string[] args)
     {
@@ -75,6 +73,11 @@ internal static class Program
                 Run("other", () => Other(command));
                 command.CommandText = "#OtherOrder";
                 Run("selected with different procedure", () => Selected(command));
+                if (args.Length == 1 && args[0] == "--three-sites")
+                {
+                    Run("third", () => Third(command));
+                    Run("third again", () => Third(command));
+                }
                 command.CommandText = "#ConfirmOrder";
                 Run("selected", () => Selected(command));
                 Run("selected again", () => Selected(command));
@@ -175,21 +178,18 @@ internal static class Program
         return command.ExecuteNonQuery();
     }
 
-    // The profiler redirects the selected call to this test-only helper.
-    private static int FailBeforeSend(SqlCommand command)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int Third(SqlCommand command)
     {
-        return ApplyRule(command, Rules.First);
+        return command.ExecuteNonQuery();
     }
 
-    private static int FailBeforeSendSecond(SqlCommand command)
+    // The profiler supplies the token of the method containing the rewritten call.
+    private static int FailBeforeSend(SqlCommand command, int token)
     {
-        return ApplyRule(command, Rules.Second);
-    }
-
-    private static int ApplyRule(SqlCommand command, InjectionRule rule)
-    {
+        var rule = Rules.GetOrAdd(token, key => new InjectionRule(key));
         var fields = rule.Fields;
-        if (InjectionRule.Enabled && fields.Length == 5 &&
+        if (InjectionRule.Enabled && fields.Length == 4 &&
             command != null &&
             command.Connection != null &&
             command.CommandType == CommandType.StoredProcedure &&
@@ -198,7 +198,7 @@ internal static class Program
             string.Equals(command.CommandText, fields[2], StringComparison.Ordinal) &&
             rule.TryConsume())
         {
-            Console.Error.WriteLine("fault fired: methodToken=" + fields[4] + " timeout-before-send");
+            Console.Error.WriteLine("fault fired: methodToken=" + token + " timeout-before-send");
             throw new TimeoutException("Injected before ExecuteNonQuery.");
         }
 

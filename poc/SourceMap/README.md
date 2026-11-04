@@ -34,12 +34,20 @@ AIを使って利用者の指定から計画を作る場合は、[AIによる注
 
 ## 複数箇所の計画
 
-候補一覧から二つの行を選び、行番号をカンマでつないで渡します。
+候補一覧から複数の行を選び、行番号をカンマでつないで渡します。
 
 ```powershell
-dotnet run --project poc/SourceMap -- $source $exe $refs '169,175' ./multi.json
+dotnet run --project poc/SourceMap -- $source $exe $refs '172,178,184' ./multi.json
 ```
 
 行番号は手元の候補一覧に合わせます。出力は version が2のオブジェクトで、rules 配列の各要素に従来のバージョン1の計画が入ります。各要素の server、database、procedure、maxFirings を独立に設定できます。単一行の指定では従来形式を出力します。
 
-PoCで受理するのは、同じSqlTarget.exeにある異なるメソッドへの最大2ルールです。プロファイラーはすべてのルールの値、EXEのハッシュ、MVID、対象メソッドを事前照合します。いずれかが不正なら計画を拒否します。実際のIL命令はメソッドごとのJIT時にも確認します。
+PoCで受理するのは、同じSqlTarget.exeにある異なる検証用メソッドへのルールです。計画全体の上限は64 KiBです。プロファイラーはすべてのルールの値、EXEのハッシュ、MVID、対象メソッドを事前照合します。いずれかが不正なら計画を拒否します。実際のIL命令はメソッドごとのJIT時にも確認します。
+
+## 実行前に計画を検証する
+
+```powershell
+dotnet run --project poc/SourceMap -- $source $exe $refs verify ./multi.json
+```
+
+対象プロセスを起動せずに、JSONの形式、重複キー、値の型と範囲を検査し、すべてのルールをソース、Portable PDB、EXEの対象命令と照合します。成功時は照合したルール件数を表示します。失敗時は理由を表示して終了コード1を返します。接続先やプロシージャの存在および発火は実行試験で確認します。

@@ -6,12 +6,13 @@ param(
     [Parameter(Mandatory)][string] $Engine,
     [Parameter(Mandatory)][string] $ExtensionConfig,
     [switch] $Concurrent,
+    [switch] $ThreeSites,
     [ValidateSet("enable", "disable", "call")][string[]] $ControlSequence
 )
 
 $ErrorActionPreference = 'Stop'
-if ($Concurrent -and $ControlSequence.Count) {
-    throw 'Concurrent and ControlSequence cannot be combined.'
+if (($Concurrent -and $ThreeSites) -or (($Concurrent -or $ThreeSites) -and $ControlSequence.Count)) {
+    throw 'Concurrent, ThreeSites and ControlSequence are mutually exclusive.'
 }
 $targetFile = Get-Item -LiteralPath $Target
 if ($targetFile.PSIsContainer -or $targetFile.Name -ne 'SqlTarget.exe') {
@@ -42,6 +43,9 @@ if ($Concurrent) {
     $start.ArgumentList.Add('--concurrent')
 }
 
+if ($ThreeSites) {
+    $start.ArgumentList.Add('--three-sites')
+}
 if ($ControlSequence.Count) {
     $start.ArgumentList.Add('--controlled')
 }

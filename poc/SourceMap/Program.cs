@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using System.Buffers.Binary;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -11,7 +13,7 @@ using Microsoft.CodeAnalysis.Text;
 try
 {
     if (args.Length is < 4 or > 5)
-        throw new ArgumentException("Usage: SourceMap <Program.cs> <SqlTarget.exe> <net48 reference directory> <list|source line[,source line]> [plan.json]");
+        throw new ArgumentException("Usage: SourceMap <Program.cs> <SqlTarget.exe> <net48 reference directory> <list|verify|source line[,source line]> [plan.json]");
 
     var sourcePath = Path.GetFullPath(args[0]);
     var exePath = Path.GetFullPath(args[1]);
@@ -46,9 +48,14 @@ try
         return 0;
     }
 
-    var selections = args[3].Split(',');
-    if (selections.Length > 2 || (selections.Length > 1 && args.Length != 5))
-        throw new ArgumentException("Specify up to two source lines and an output path for a multi-rule plan.");
+    var verify = args[3] == "verify";
+    if (verify && args.Length != 5)
+        throw new ArgumentException("Specify the plan file to verify.");
+    var selections = verify
+        ? candidates.Select(candidate => candidate.Line.ToString()).ToArray()
+        : args[3].Split(',');
+    if (selections.Length > 1 && args.Length != 5)
+        throw new ArgumentException("Specify an output path for a multi-rule plan.");
     var rules = new List<object>();
     var seenLines = new HashSet<int>();
     foreach (var selection in selections)
@@ -129,7 +136,11 @@ try
             Console.WriteLine("Call: System.Data.Common.DbCommand.ExecuteNonQuery()");
         }
     }
-    if (args.Length == 5)
+    if (verify)
+    {
+        VerifyPlan(args[4], rules.Select(rule => JsonSerializer.SerializeToElement(rule)));
+    }
+    else if (args.Length == 5)
     {
         using var output = new FileStream(args[4], FileMode.CreateNew);
         var plan = rules.Count == 1 ? rules[0] : new { version = 2, rules };
@@ -142,4 +153,75 @@ catch (Exception error)
 {
     Console.Error.WriteLine(error.Message);
     return 1;
+}
+
+
+static void VerifyPlan(string path, IEnumerable<JsonElement> verifiedSites)
+{
+    using var input = File.OpenRead(path);
+    if (input.Length is <= 0 or > 65536)
+        throw new InvalidDataException("Invalid plan file size.");
+
+    using var document = JsonDocument.Parse(input);
+    var root = document.RootElement;
+    var keys = ReadKeys(root);
+    JsonElement[] rules;
+    if (root.GetProperty("version").GetInt32() == 2)
+    {
+        if (keys.Count != 2)
+            throw new InvalidDataException("Unexpected multi-rule plan fields.");
+        rules = root.GetProperty("rules").EnumerateArray().ToArray();
+    }
+    else
+    {
+        rules = [root];
+    }
+
+    if (rules.Length == 0)
+        throw new InvalidDataException("The plan contains no rules.");
+
+    var sites = verifiedSites.ToDictionary(site => site.GetProperty("methodToken").GetInt32());
+    var seen = new HashSet<int>();
+    foreach (var rule in rules)
+    {
+        if (ReadKeys(rule).Count != 11)
+            throw new InvalidDataException("Unexpected rule fields.");
+
+        if (rule.GetProperty("version").GetInt32() != 1 || rule.GetProperty("ilOffset").GetInt32() != 1)
+            throw new InvalidDataException("Unsupported rule version or IL offset.");
+
+        var token = rule.GetProperty("methodToken").GetInt32();
+        if (!seen.Add(token) || !sites.TryGetValue(token, out var site))
+            throw new InvalidDataException($"Unknown or repeated method token: {token}.");
+
+        foreach (var key in new[] { "version", "sha256", "mvid", "methodToken", "ilOffset", "call", "fault" })
+        {
+            if (!JsonElement.DeepEquals(rule.GetProperty(key), site.GetProperty(key)))
+                throw new InvalidDataException($"Rule {token}: {key} does not match the verified source and executable.");
+        }
+
+        foreach (var key in new[] { "server", "database", "procedure" })
+        {
+            var value = rule.GetProperty(key).GetString();
+            if (string.IsNullOrEmpty(value) || Encoding.UTF8.GetByteCount(value) > 1024 ||
+                value.IndexOfAny(['\r', '\n', '\0']) >= 0)
+                throw new InvalidDataException($"Rule {token}: invalid {key}.");
+        }
+
+        if (rule.GetProperty("maxFirings").GetInt32() < 0)
+            throw new InvalidDataException($"Rule {token}: invalid maxFirings.");
+    }
+
+    Console.WriteLine($"Verified {rules.Length} rule(s) against the executable, Portable PDB and source.");
+}
+
+static HashSet<string> ReadKeys(JsonElement value)
+{
+    var keys = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var property in value.EnumerateObject())
+    {
+        if (!keys.Add(property.Name))
+            throw new InvalidDataException($"Duplicate JSON key: {property.Name}.");
+    }
+    return keys;
 }

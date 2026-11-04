@@ -70,3 +70,7 @@ Program.Selected を選んで現在のEXE用のJSON計画を生成し、maxFirin
 Selected の上限を2、Other の上限を1に設定し、同じJSON計画で起動しました。同じプロシージャに対して Selected で2回、Other で1回発火し、別プロシージャの呼び出しは成功しました。DBへの記録は1件でした。書換えと発火のログに methodToken を含め、ランチャーの FiringsByMethod で箇所別の件数を集計します。
 
 重複した対象を含む計画は全体が拒否され、書換えと発火は0回でした。従来形式の単一ルールは引き続き動作し、試験前後で同じEXEのSHA-256が一致しました。
+
+## 三箇所の試験
+
+SourceMapの候補から Selected、Other、Third を選んで一つのJSONを生成し、ランチャーに -ThreeSites を渡します。Selected は #ConfirmOrder を2回、Other は #ConfirmOrder を1回、Third は #OtherOrder を1回まで失敗させる条件に設定しました。同じPIDで箇所別に2回、1回、1回発火し、条件不一致と上限到達後の呼び出しは成功しました。DBへの記録は2件で、試験前後のEXEのSHA-256は一致しました。
