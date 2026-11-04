@@ -18,7 +18,7 @@ internal static class Program
         internal InjectionRule(int token)
         {
             Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + token) ?? "").Split('\n');
-            remaining = Fields.Length == 4 && int.TryParse(Fields[3], out int limit) ? limit : 0;
+            remaining = (Fields.Length == 4 || Fields.Length == 5) && int.TryParse(Fields[3], out int limit) ? limit : 0;
         }
 
         internal static bool Enabled = true;
@@ -40,6 +40,8 @@ internal static class Program
 
     private static readonly ConcurrentDictionary<int, InjectionRule> Rules =
         new ConcurrentDictionary<int, InjectionRule>();
+
+    private static ManualResetEventSlim delayStarted;
 
     private static void Main(string[] args)
     {
@@ -107,15 +109,23 @@ internal static class Program
 
         protected override void OnStart(string[] args)
         {
-            if (args.Length < 1 || args.Length > 2 || !Path.IsPathRooted(args[0]))
-                throw new ArgumentException("Pass an absolute log path and optionally a SQL Server instance.");
+            if (args.Length < 1 || args.Length > 3 || !Path.IsPathRooted(args[0]) ||
+                (args.Length == 3 && args[2] != "overlap"))
+                throw new ArgumentException("Pass an absolute log path and optionally a SQL Server instance and overlap mode.");
             var settings = new SqlConnectionStringBuilder
             {
-                DataSource = args.Length == 2 ? args[1] : @"(localdb)\MSSQLLocalDB",
+                DataSource = args.Length >= 2 ? args[1] : @"(localdb)\MSSQLLocalDB",
                 InitialCatalog = "tempdb",
                 IntegratedSecurity = true,
                 ConnectTimeout = 10
             };
+            if (args.Length == 3)
+            {
+                using (var output = new StreamWriter(args[0]))
+                    RunOverlap(settings.ConnectionString, TextWriter.Synchronized(output));
+                return;
+            }
+
             using (var output = new StreamWriter(args[0]))
             using (var connection = new SqlConnection(settings.ConnectionString))
             using (var command = new SqlCommand("#ConfirmOrder", connection))
@@ -161,6 +171,78 @@ internal static class Program
                 {
                     Console.SetError(TextWriter.Null);
                 }
+            }
+        }
+    }
+
+    private static void RunOverlap(string connectionString, TextWriter output)
+    {
+        var table = "##ChaosOverlap_" + Guid.NewGuid().ToString("N");
+        using (var first = new SqlConnection(connectionString))
+        using (var second = new SqlConnection(connectionString))
+        using (var observer = new SqlConnection(connectionString))
+        using (var started = new ManualResetEventSlim())
+        {
+            first.Open();
+            second.Open();
+            observer.Open();
+            using (var create = new SqlCommand("CREATE TABLE " + table + " (Worker char(1) NOT NULL PRIMARY KEY)", first))
+                create.ExecuteNonQuery();
+            foreach (var connection in new[] { first, second })
+            {
+                using (var setup = new SqlCommand("CREATE PROCEDURE #ConfirmOrder @Worker char(1) AS INSERT INTO " +
+                    table + " VALUES (@Worker)", connection))
+                    setup.ExecuteNonQuery();
+            }
+
+            var gate = new object();
+            var order = new System.Collections.Generic.List<string>();
+            var completed = 0;
+            Action<SqlConnection, string> execute = (connection, worker) =>
+            {
+                using (var command = new SqlCommand("#ConfirmOrder", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.Add("@Worker", SqlDbType.Char, 1).Value = worker;
+                    if (Selected(command) != 1)
+                        throw new InvalidOperationException("Expected one affected row.");
+                }
+
+                lock (gate)
+                {
+                    order.Add(worker);
+                    using (var count = new SqlCommand("SELECT COUNT(*) FROM " + table, observer))
+                    {
+                        var rows = (int)count.ExecuteScalar();
+                        completed++;
+                        output.WriteLine($"completed={worker} application={completed} db={rows}");
+                        if (rows != completed)
+                            throw new InvalidOperationException("Application and database counts diverged.");
+                    }
+                }
+            };
+
+            var previousError = Console.Error;
+            Console.SetError(output);
+            delayStarted = started;
+            try
+            {
+                output.WriteLine("initial application=0 db=0");
+                var workerA = Task.Run(() => execute(first, "A"));
+                if (!started.Wait(TimeSpan.FromSeconds(8)))
+                {
+                    workerA.GetAwaiter().GetResult();
+                    throw new InvalidOperationException("Agent did not signal the first worker delay.");
+                }
+                var workerB = Task.Run(() => execute(second, "B"));
+                Task.WaitAll(workerA, workerB);
+                if (order.Count != 2 || order[0] != "B" || order[1] != "A")
+                    throw new InvalidOperationException("Expected completion order B then A.");
+            }
+            finally
+            {
+                delayStarted = null;
+                Console.SetError(previousError);
             }
         }
     }
@@ -264,7 +346,7 @@ internal static class Program
     {
         var rule = Rules.GetOrAdd(token, key => new InjectionRule(key));
         var fields = rule.Fields;
-        if (InjectionRule.Enabled && fields.Length == 4 &&
+        if (InjectionRule.Enabled && (fields.Length == 4 || fields.Length == 5) &&
             command != null &&
             command.Connection != null &&
             command.CommandType == CommandType.StoredProcedure &&
@@ -273,8 +355,15 @@ internal static class Program
             string.Equals(command.CommandText, fields[2], StringComparison.Ordinal) &&
             rule.TryConsume())
         {
-            Console.Error.WriteLine("fault fired: methodToken=" + token + " timeout-before-send");
-            throw new TimeoutException("Injected before ExecuteNonQuery.");
+            if (fields.Length == 4)
+            {
+                Console.Error.WriteLine("fault fired: methodToken=" + token + " timeout-before-send");
+                throw new TimeoutException("Injected before ExecuteNonQuery.");
+            }
+
+            Console.Error.WriteLine("fault fired: methodToken=" + token + " delay-before-send");
+            delayStarted?.Set();
+            Thread.Sleep(int.Parse(fields[4], System.Globalization.CultureInfo.InvariantCulture));
         }
 
         return command.ExecuteNonQuery();

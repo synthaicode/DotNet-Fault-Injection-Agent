@@ -306,7 +306,7 @@ private:
             !plan.at("ilOffset").is_number_unsigned() || plan.at("ilOffset").get<uint64_t>() > MAXDWORD ||
             (!externalSample && plan.at("ilOffset") != 1) ||
             plan.at("call") != "System.Data.Common.DbCommand.ExecuteNonQuery()" ||
-            (delay ? !externalSample : plan.at("fault") != "timeout-before-send"))
+            (delay ? !deferMetadata : plan.at("fault") != "timeout-before-send"))
             throw std::runtime_error("unsupported plan fields or values");
 
         const auto limit = plan.at("maxFirings");
