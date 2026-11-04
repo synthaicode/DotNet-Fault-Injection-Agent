@@ -107,12 +107,30 @@ internal static class Program
 
         protected override void OnStart(string[] args)
         {
-            if (args.Length != 1 || !Path.IsPathRooted(args[0]))
-                throw new ArgumentException("Pass an absolute log path.");
+            if (args.Length < 1 || args.Length > 2 || !Path.IsPathRooted(args[0]))
+                throw new ArgumentException("Pass an absolute log path and optionally a SQL Server instance.");
+            var settings = new SqlConnectionStringBuilder
+            {
+                DataSource = args.Length == 2 ? args[1] : @"(localdb)\MSSQLLocalDB",
+                InitialCatalog = "tempdb",
+                IntegratedSecurity = true,
+                ConnectTimeout = 10
+            };
             using (var output = new StreamWriter(args[0]))
-            using (var connection = new SqlConnection(@"Server=(localdb)\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=true"))
+            using (var connection = new SqlConnection(settings.ConnectionString))
             using (var command = new SqlCommand("#ConfirmOrder", connection))
             {
+                if (args.Length == 2)
+                {
+                    connection.Open();
+                    using (var setup = connection.CreateCommand())
+                    {
+                        setup.CommandText = "CREATE TABLE #Received (Id int IDENTITY)";
+                        setup.ExecuteNonQuery();
+                        setup.CommandText = "CREATE PROCEDURE #ConfirmOrder AS INSERT INTO #Received DEFAULT VALUES";
+                        setup.ExecuteNonQuery();
+                    }
+                }
                 command.CommandType = CommandType.StoredProcedure;
                 Console.SetError(output);
                 try
@@ -121,7 +139,7 @@ internal static class Program
                     {
                         try
                         {
-                            Selected(command);
+                            output.WriteLine($"attempt={attempt} success: rows affected={Selected(command)}");
                         }
                         catch (TimeoutException error)
                         {
@@ -130,6 +148,12 @@ internal static class Program
                         catch (InvalidOperationException error)
                         {
                             output.WriteLine($"attempt={attempt} InvalidOperationException: {error.Message}");
+                        }
+
+                        if (connection.State == ConnectionState.Open)
+                        {
+                            using (var count = new SqlCommand("SELECT COUNT(*) FROM #Received", connection))
+                                output.WriteLine($"attempt={attempt} DB rows={count.ExecuteScalar()}");
                         }
                     }
                 }
