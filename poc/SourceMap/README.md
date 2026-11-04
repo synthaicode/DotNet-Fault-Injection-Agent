@@ -51,3 +51,17 @@ dotnet run --project poc/SourceMap -- $source $exe $refs verify ./multi.json
 ```
 
 対象プロセスを起動せずに、JSONの形式、重複キー、値の型と範囲を検査し、すべてのルールをソース、Portable PDB、EXEの対象命令と照合します。成功時は照合したルール件数を表示します。失敗時は理由を表示して終了コード1を返します。接続先やプロシージャの存在および発火は実行試験で確認します。
+
+## .NET Frameworkプロジェクトを解析する
+
+最初の引数に .csproj を指定すると、MSBuildがReleaseおよび.NET Framework 4.8として評価したソースファイル、参照、条件付きコンパイル定数を読み込みます。対象EXEも同じ条件でPortable PDB付きでビルドします。現PoCはフレームワーク参照を使うプロジェクトを対象とし、プロジェクト参照やPackageReferenceを検出した場合は止まります。候補選択は一覧に表示された番号で行います。
+
+```powershell
+dotnet run --project poc/SourceMap -- $project $exe $refs recommend
+dotnet run --project poc/SourceMap -- $project $exe $refs 1 ./order-plan.json
+dotnet run --project poc/SourceMap -- $project $exe $refs verify ./order-plan.json
+```
+
+recommend は候補を囲む例外処理を表示し、送信前の失敗で観測する挙動を提案します。AIはソースから実際の復旧経路と影響範囲を確認し、試験条件を利用者と確定してから計画の条件値を更新します。生成時の条件は検証用の既定値です。静的解析で示した候補は、障害を実際に起こして確かめる仮説として扱います。
+
+MicrosoftのWide World Importers注文投入サンプルをソース無変更でビルドし、PerformSqlTask の ExecuteNonQuery を候補として特定しました。生成した計画を verify で照合でき、ILオフセットを1ずらした計画は拒否されました。現在のプロファイラーは専用SqlTarget.exeを対象にしており、この外部サンプルは計画の作成・事前検証まで対応します。

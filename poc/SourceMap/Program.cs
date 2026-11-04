@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Buffers.Binary;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
@@ -13,38 +12,50 @@ using Microsoft.CodeAnalysis.Text;
 try
 {
     if (args.Length is < 4 or > 5)
-        throw new ArgumentException("Usage: SourceMap <Program.cs> <SqlTarget.exe> <net48 reference directory> <list|verify|source line[,source line]> [plan.json]");
+        throw new ArgumentException("Usage: SourceMap <Program.cs|project.csproj> <SqlTarget.exe> <net48 reference directory> <list|recommend|verify|selection[,selection]> [plan.json]");
 
     var sourcePath = Path.GetFullPath(args[0]);
     var exePath = Path.GetFullPath(args[1]);
-    using var sourceStream = File.OpenRead(sourcePath);
-    var source = SourceText.From(sourceStream, checksumAlgorithm: SourceHashAlgorithm.Sha256);
-    var tree = CSharpSyntaxTree.ParseText(source, path: sourcePath);
-    var references = new[] { "mscorlib.dll", "System.dll", "System.Core.dll", "System.Data.dll" }
-        .Select(name => MetadataReference.CreateFromFile(Path.Combine(args[2], name)));
-    var compilation = CSharpCompilation.Create("SqlTarget", [tree], references,
-        new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+    var projectMode = Path.GetExtension(sourcePath).Equals(".csproj", StringComparison.OrdinalIgnoreCase);
+    var compilation = projectMode ? ProjectInput.Load(sourcePath, args[2]) : LoadFixture(sourcePath, args[2]);
     var errors = compilation.GetDiagnostics().Where(item => item.Severity == DiagnosticSeverity.Error).ToArray();
     if (errors.Length != 0)
         throw new InvalidDataException(string.Join(Environment.NewLine, errors.Select(error => error.ToString())));
 
-    var model = compilation.GetSemanticModel(tree);
-    // Limit the candidates to the single-return wrapper shape supported by this PoC.
-    var candidates = tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>()
-        .Where(call => call.Parent is ReturnStatementSyntax { Parent: BlockSyntax block } &&
-            block.Statements.Count == 1 && block.Parent is MethodDeclarationSyntax)
-        .Select(call => (Call: call, Method: model.GetSymbolInfo(call).Symbol as IMethodSymbol))
-        .Where(candidate => candidate.Method is { Name: "ExecuteNonQuery", Parameters.Length: 0 } &&
-            candidate.Method.ContainingType.ToDisplayString() == "System.Data.SqlClient.SqlCommand")
-        .Select(candidate => (candidate.Call,
-            Caller: model.GetEnclosingSymbol(candidate.Call.SpanStart) as IMethodSymbol,
-            Line: candidate.Call.GetLocation().GetLineSpan().StartLinePosition.Line + 1))
-        .ToArray();
+    var candidates = compilation.SyntaxTrees.SelectMany(tree =>
+    {
+        var model = compilation.GetSemanticModel(tree);
+        return tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Where(call => projectMode || call.Parent is ReturnStatementSyntax { Parent: BlockSyntax block } &&
+                block.Statements.Count == 1 && block.Parent is MethodDeclarationSyntax)
+            .Select(call => (Call: call, Method: model.GetSymbolInfo(call).Symbol as IMethodSymbol))
+            .Where(candidate => candidate.Method is { Name: "ExecuteNonQuery", Parameters.Length: 0 } &&
+                candidate.Method.ContainingType.ToDisplayString() == "System.Data.SqlClient.SqlCommand")
+            .Select(candidate => (candidate.Call,
+                Caller: model.GetEnclosingSymbol(candidate.Call.SpanStart) as IMethodSymbol,
+                Line: candidate.Call.GetLocation().GetLineSpan().StartLinePosition.Line + 1));
+    }).Select((candidate, index) => (candidate.Call, candidate.Caller, candidate.Line,
+        Id: projectMode ? index + 1 : candidate.Line)).ToArray();
 
-    if (args[3] == "list")
+    if (args[3] is "list" or "recommend")
     {
         foreach (var candidate in candidates)
-            Console.WriteLine($"{candidate.Line}: {candidate.Caller?.ToDisplayString()} -> SqlCommand.ExecuteNonQuery()");
+        {
+            Console.WriteLine($"{candidate.Id}: {candidate.Caller?.ToDisplayString()} -> SqlCommand.ExecuteNonQuery()");
+            if (projectMode)
+                Console.WriteLine($"   {Path.GetRelativePath(Path.GetDirectoryName(sourcePath), candidate.Call.SyntaxTree.FilePath)}:{candidate.Line}");
+            if (args[3] == "recommend")
+            {
+                var catches = candidate.Call.Ancestors().OfType<TryStatementSyntax>()
+                    .Where(statement => statement.Block.Span.Contains(candidate.Call.Span))
+                    .SelectMany(statement => statement.Catches)
+                    .Select(clause => clause.Declaration?.Type.ToString() ?? "any exception")
+                    .Distinct().ToArray();
+                Console.WriteLine(catches.Length == 0
+                    ? "   Trial: check how a pre-send failure propagates; no enclosing catch was found in this method."
+                    : $"   Trial: check what happens after a pre-send failure; enclosing catches: {string.Join(", ", catches)}.");
+            }
+        }
         return 0;
     }
 
@@ -52,7 +63,7 @@ try
     if (verify && args.Length != 5)
         throw new ArgumentException("Specify the plan file to verify.");
     var selections = verify
-        ? candidates.Select(candidate => candidate.Line.ToString()).ToArray()
+        ? candidates.Select(candidate => candidate.Id.ToString()).ToArray()
         : args[3].Split(',');
     if (selections.Length > 1 && args.Length != 5)
         throw new ArgumentException("Specify an output path for a multi-rule plan.");
@@ -60,14 +71,17 @@ try
     var seenLines = new HashSet<int>();
     foreach (var selection in selections)
     {
-        if (!int.TryParse(selection, out var line))
+        if (!int.TryParse(selection, out var id))
             throw new ArgumentException("Select a source line from the candidate list.");
-        if (!seenLines.Add(line)) throw new ArgumentException("Duplicate source line.");
-        var selected = candidates.Single(candidate => candidate.Line == line);
-        if (selected.Caller is not { IsStatic: true, Parameters.Length: 1 } caller ||
+        if (!seenLines.Add(id)) throw new ArgumentException("Duplicate selection.");
+        var selected = candidates.Single(candidate => candidate.Id == id);
+        var line = selected.Line;
+        var source = selected.Call.SyntaxTree.GetText();
+        var caller = selected.Caller ?? throw new InvalidDataException("Missing enclosing method.");
+        if (!projectMode && (caller is not { IsStatic: true, Parameters.Length: 1 } ||
             caller.ContainingType.ToDisplayString() != "Program" ||
             caller.Parameters[0].Type.ToDisplayString() != "System.Data.SqlClient.SqlCommand" ||
-            caller.ReturnType.SpecialType != SpecialType.System_Int32)
+            caller.ReturnType.SpecialType != SpecialType.System_Int32))
             throw new InvalidDataException("The selected method is outside the fixed SqlTarget fixture shape.");
 
         using var image = File.OpenRead(exePath);
@@ -80,12 +94,14 @@ try
             var pdb = provider.GetMetadataReader();
             var metadata = pe.GetMetadataReader();
             var owner = metadata.TypeDefinitions.Single(handle =>
-                metadata.GetString(metadata.GetTypeDefinition(handle).Name) == "Program");
+                metadata.GetString(metadata.GetTypeDefinition(handle).Name) == caller.ContainingType.MetadataName &&
+                metadata.GetString(metadata.GetTypeDefinition(handle).Namespace) == (caller.ContainingNamespace.IsGlobalNamespace ? "" : caller.ContainingNamespace.ToDisplayString()));
             var methodHandle = metadata.GetTypeDefinition(owner).GetMethods().Single(handle =>
                 metadata.GetString(metadata.GetMethodDefinition(handle).Name) == caller.Name);
             var method = metadata.GetMethodDefinition(methodHandle);
             var points = pdb.GetMethodDebugInformation(methodHandle.ToDebugInformationHandle());
-            var point = points.GetSequencePoints().Single(item =>
+            var sequencePoints = points.GetSequencePoints().ToArray();
+            var point = sequencePoints.Single(item =>
                 !item.IsHidden && item.StartLine == line && item.EndLine == line);
             var document = pdb.GetDocument(point.Document.IsNil ? points.Document : point.Document);
             var checksum = pdb.GetBlobBytes(document.Hash);
@@ -95,22 +111,12 @@ try
             if (expected.Length == 0 || !checksum.SequenceEqual(expected))
                 throw new InvalidDataException("Source checksum does not match the PDB document.");
 
-            // Release SqlTarget fixture: ldarg.0, callvirt <memberref>, ret.
             var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
-            if (point.Offset != 0 || il is not [0x02, 0x6f, _, _, _, _, 0x2a])
+            if (!projectMode && (point.Offset != 0 || il is not [0x02, 0x6f, _, _, _, _, 0x2a]))
                 throw new InvalidDataException("Unexpected IL shape for the selected call.");
-            var token = MetadataTokens.EntityHandle(BinaryPrimitives.ReadInt32LittleEndian(il.AsSpan(2, 4)));
-            if (token.Kind != HandleKind.MemberReference)
-                throw new InvalidDataException("The selected call does not reference an external member.");
-            var member = metadata.GetMemberReference((MemberReferenceHandle)token);
-            if (member.Parent.Kind != HandleKind.TypeReference ||
-                metadata.GetString(member.Name) != "ExecuteNonQuery" ||
-                !metadata.GetBlobBytes(member.Signature).SequenceEqual(new byte[] { 0x20, 0, 0x08 }))
-                throw new InvalidDataException("Unexpected call signature.");
-            var type = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
-            if (metadata.GetString(type.Namespace) != "System.Data.Common" ||
-                metadata.GetString(type.Name) != "DbCommand")
-                throw new InvalidDataException("Unexpected call declaring type.");
+            var end = sequencePoints.Where(item => item.Offset > point.Offset).Select(item => item.Offset)
+                .DefaultIfEmpty(il.Length).Min();
+            var ilOffset = ProjectInput.FindSqlCall(il, point.Offset, end, metadata);
 
             image.Position = 0;
             var plan = new
@@ -119,7 +125,7 @@ try
                 sha256 = Convert.ToHexString(SHA256.HashData(image)),
                 mvid = metadata.GetGuid(metadata.GetModuleDefinition().Mvid),
                 methodToken = MetadataTokens.GetToken(methodHandle),
-                ilOffset = 1,
+                ilOffset,
                 call = "System.Data.Common.DbCommand.ExecuteNonQuery()",
                 fault = "timeout-before-send",
                 server = @"(localdb)\MSSQLLocalDB",
@@ -132,7 +138,7 @@ try
             Console.WriteLine($"Source: {caller.ToDisplayString()} line {line}");
             Console.WriteLine($"SHA-256: {plan.sha256}");
             Console.WriteLine($"MVID: {plan.mvid}");
-            Console.WriteLine($"Method: 0x{MetadataTokens.GetToken(methodHandle):X8}, IL_0001");
+            Console.WriteLine($"Method: 0x{MetadataTokens.GetToken(methodHandle):X8}, IL_{ilOffset:X4}");
             Console.WriteLine("Call: System.Data.Common.DbCommand.ExecuteNonQuery()");
         }
     }
@@ -180,19 +186,21 @@ static void VerifyPlan(string path, IEnumerable<JsonElement> verifiedSites)
     if (rules.Length == 0)
         throw new InvalidDataException("The plan contains no rules.");
 
-    var sites = verifiedSites.ToDictionary(site => site.GetProperty("methodToken").GetInt32());
-    var seen = new HashSet<int>();
+    var sites = verifiedSites.ToDictionary(site =>
+        (site.GetProperty("methodToken").GetInt32(), site.GetProperty("ilOffset").GetInt32()));
+    var seen = new HashSet<(int, int)>();
     foreach (var rule in rules)
     {
         if (ReadKeys(rule).Count != 11)
             throw new InvalidDataException("Unexpected rule fields.");
 
-        if (rule.GetProperty("version").GetInt32() != 1 || rule.GetProperty("ilOffset").GetInt32() != 1)
+        if (rule.GetProperty("version").GetInt32() != 1 || rule.GetProperty("ilOffset").GetInt32() < 0)
             throw new InvalidDataException("Unsupported rule version or IL offset.");
 
         var token = rule.GetProperty("methodToken").GetInt32();
-        if (!seen.Add(token) || !sites.TryGetValue(token, out var site))
-            throw new InvalidDataException($"Unknown or repeated method token: {token}.");
+        var offset = rule.GetProperty("ilOffset").GetInt32();
+        if (!seen.Add((token, offset)) || !sites.TryGetValue((token, offset), out var site))
+            throw new InvalidDataException($"Unknown or repeated call site: method {token}, IL offset {offset}.");
 
         foreach (var key in new[] { "version", "sha256", "mvid", "methodToken", "ilOffset", "call", "fault" })
         {
@@ -224,4 +232,16 @@ static HashSet<string> ReadKeys(JsonElement value)
             throw new InvalidDataException($"Duplicate JSON key: {property.Name}.");
     }
     return keys;
+}
+
+
+static CSharpCompilation LoadFixture(string sourcePath, string referenceDirectory)
+{
+    using var input = File.OpenRead(sourcePath);
+    var source = SourceText.From(input, checksumAlgorithm: SourceHashAlgorithm.Sha256);
+    var tree = CSharpSyntaxTree.ParseText(source, path: sourcePath);
+    var references = new[] { "mscorlib.dll", "System.dll", "System.Core.dll", "System.Data.dll" }
+        .Select(name => MetadataReference.CreateFromFile(Path.Combine(referenceDirectory, name)));
+    return CSharpCompilation.Create("SqlTarget", [tree], references,
+        new CSharpCompilationOptions(OutputKind.ConsoleApplication));
 }
