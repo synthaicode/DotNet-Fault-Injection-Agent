@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.SqlClient;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using ServiceBase = System.ServiceProcess.ServiceBase;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -18,7 +20,8 @@ internal static class Program
         internal InjectionRule(int token)
         {
             Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + token) ?? "").Split('\n');
-            remaining = (Fields.Length == 4 || Fields.Length == 5) && int.TryParse(Fields[3], out int limit) ? limit : 0;
+            remaining = (Fields.Length >= 2 && Fields.Length <= 5) &&
+                int.TryParse(Fields[Fields.Length <= 3 ? Fields.Length - 1 : 3], out int limit) ? limit : 0;
         }
 
         internal static bool Enabled = true;
@@ -42,12 +45,32 @@ internal static class Program
         new ConcurrentDictionary<int, InjectionRule>();
 
     private static ManualResetEventSlim delayStarted;
+    private static bool allowThreadAbortProbe;
 
     private static void Main(string[] args)
     {
         if (args.Length == 1 && args[0] == "--service")
         {
             ServiceBase.Run(new ServiceProbe());
+            return;
+        }
+
+        if (args.Length == 2 && args[0] == "--network")
+        {
+            RunNetworkProbe(int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture));
+            return;
+        }
+
+        if (args.Length == 2 && args[0] == "--file-abort")
+        {
+            allowThreadAbortProbe = true;
+            RunAbortProbe(Path.GetFullPath(args[1]));
+            return;
+        }
+
+        if (args.Length == 2 && args[0] == "--file")
+        {
+            RunFileProbe(Path.GetFullPath(args[1]));
             return;
         }
 
@@ -255,6 +278,142 @@ internal static class Program
                 Console.SetError(previousError);
             }
         }
+    }
+
+    private static void RunNetworkProbe(int port)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, port);
+        listener.Start();
+        try
+        {
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                using (var client = new TcpClient(AddressFamily.InterNetwork))
+                {
+                    try
+                    {
+                        ConnectSelected(client, "127.0.0.1", port);
+                        using (var peer = listener.AcceptTcpClient())
+                            Console.WriteLine($"attempt={attempt} connected");
+                    }
+                    catch (SocketException error)
+                    {
+                        Console.WriteLine($"attempt={attempt} SocketException: {error.SocketErrorCode}");
+                    }
+                    Console.WriteLine($"attempt={attempt} pending={listener.Pending()}");
+                }
+            }
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ConnectSelected(TcpClient client, string host, int port)
+    {
+        client.Connect(host, port);
+    }
+
+    private static void ConnectWithFault(TcpClient client, string host, int port, int token)
+    {
+        var rule = Rules.GetOrAdd(token, key => new InjectionRule(key));
+        if (rule.Fields.Length == 3 && InjectionRule.Enabled &&
+            string.Equals(host, rule.Fields[0], StringComparison.OrdinalIgnoreCase) &&
+            port.ToString(System.Globalization.CultureInfo.InvariantCulture) == rule.Fields[1] &&
+            rule.TryConsume())
+        {
+            Console.Error.WriteLine("fault fired: methodToken=" + token + " connection-refused-before-connect");
+            throw new SocketException((int)SocketError.ConnectionRefused);
+        }
+
+        client.Connect(host, port);
+    }
+
+    private static void RunAbortProbe(string path)
+    {
+        if (File.Exists(path))
+            throw new IOException("The probe requires a new file.");
+
+        bool caught = false;
+        bool continued = false;
+        bool finalized = false;
+        var worker = new Thread(() =>
+        {
+            try
+            {
+                WriteSelected(path, "probe");
+            }
+            catch (ThreadAbortException)
+            {
+                caught = true;
+            }
+            finally
+            {
+                finalized = true;
+            }
+            continued = true;
+        });
+        worker.Start();
+        worker.Join();
+        Console.WriteLine($"ThreadAbortException caught={caught} finally={finalized} continued={continued} exists={File.Exists(path)}");
+        if (!caught || !finalized || continued || File.Exists(path))
+            throw new InvalidOperationException("Unexpected thread-abort result.");
+
+        WriteSelected(path, "probe");
+        Console.WriteLine($"second call exists={File.Exists(path)}");
+    }
+
+    private static void RunFileProbe(string path)
+    {
+        if (File.Exists(path))
+            throw new IOException("The probe requires a new file.");
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                WriteSelected(path, "probe");
+                Console.WriteLine($"attempt={attempt} success");
+            }
+            catch (OutOfMemoryException error)
+            {
+                Console.WriteLine($"attempt={attempt} OutOfMemoryException: {error.Message}");
+            }
+            catch (IOException error)
+            {
+                Console.WriteLine($"attempt={attempt} IOException: {error.Message}");
+            }
+            Console.WriteLine($"attempt={attempt} exists={File.Exists(path)}");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WriteSelected(string path, string content)
+    {
+        File.WriteAllText(path, content);
+    }
+
+    private static void WriteWithFault(string path, string content, int token)
+    {
+        var rule = Rules.GetOrAdd(token, key => new InjectionRule(key));
+        if ((rule.Fields.Length == 2 || rule.Fields.Length == 3) && InjectionRule.Enabled &&
+            (rule.Fields.Length != 3 || rule.Fields[1] != "thread-abort-before-write" || allowThreadAbortProbe) &&
+            string.Equals(Path.GetFullPath(path), Path.GetFullPath(rule.Fields[0]), StringComparison.OrdinalIgnoreCase) &&
+            rule.TryConsume())
+        {
+            var fault = rule.Fields.Length == 3 ? rule.Fields[1] : "io-error-before-write";
+            Console.Error.WriteLine("fault fired: methodToken=" + token + " " + fault);
+            if (fault == "oom-before-write")
+                throw new OutOfMemoryException("Injected before File.WriteAllText.");
+            if (fault == "thread-abort-before-write")
+            {
+                Thread.CurrentThread.Abort();
+                return;
+            }
+            throw new IOException("Injected before File.WriteAllText.");
+        }
+        File.WriteAllText(path, content);
     }
 
     private static void RunControlled(SqlCommand command)

@@ -109,3 +109,18 @@ ChaosTestのSQL Server 2022 Expressで、verify済み計画の受理、IL書換�
 実DB試験の開始引数の末尾に retry を追加します。サービスは正常完了した時点で処理を終え、初回にTimeoutExceptionを捕捉した場合に限り、同じSQL呼び出しを一度再試行します。
 
 ChaosTestで、注入なしでは初回に成功し、DB件数は1でした。発火上限1のverify済み計画を渡した場合は、初回の送信前TimeoutException直後にDB件数0、サービス自身の再試行後にDB件数1でした。Agent発火は1回で、EXEのハッシュは試験前後で一致し、専用サービスは登録を解除しました。DB側で既に処理済みの操作を再試行する場合の二重書込みは、この試験の範囲外です。
+
+## ファイルI/OとTCP接続の障害試験
+
+SourceMapの候補一覧から、ファイルなら WriteSelected、TCPなら ConnectSelected を選んでJSONを作成し、条件を設定して verify を通します。プロファイラーの起動設定は[既存の手順](../ProfilerRewrite/README.md)を使い、WINDOWS_CHAOS_PLAN に計画の絶対パスを渡します。いずれも専用EXEでの同期API試験です。
+
+| 障害種別 | 対象と条件 | 試験用EXEの引数 |
+|---|---|---|
+| io-error-before-write | File.WriteAllText(string,string)、path に対象の絶対パス | --file と未作成の対象パス |
+| connection-refused-before-connect | TcpClient.Connect(string,int)、host は127.0.0.1、port は試験用の待受ポート | --network とポート番号 |
+| oom-before-write | File.WriteAllText の直前にOutOfMemoryExceptionを模擬。path を指定 | --file と未作成の対象パス |
+| thread-abort-before-write | File.WriteAllText の直前に専用ワーカーで実際にThread.Abort。path を指定 | --file-abort と未作成の対象パス |
+
+上限1で、ファイルのIOExceptionと模擬OOMは初回に発火してファイルを作らず、二回目の書き込みは成功しました。別パスでは発火しませんでした。TCPは初回にConnectionRefusedを返し、待受側に接続は届きませんでした。二回目と別ポートでは接続できました。スレッド中断はcatchとfinallyが実行され、その後のワーカー処理は実行されず、ファイルは作られませんでした。別スレッドでの二回目の呼び出しは書き込みに成功しました。
+
+OOMは例外処理の試験です。実際のメモリ枯渇、書き込み途中のエラー、接続後の切断や応答喪失、ファイルとネットワークの障害を既存Windowsサービスに適用する試験は未実施です。

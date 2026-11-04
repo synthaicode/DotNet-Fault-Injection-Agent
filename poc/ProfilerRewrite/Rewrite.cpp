@@ -111,7 +111,7 @@ public:
         result = method->GetMethodToken(&token);
         if (FAILED(result)) return result;
         if (planReady && plannedOffsets.find(token) != plannedOffsets.end())
-            return RedirectSqlCall(method, graph, first, token);
+            return RedirectCall(method, graph, first, token);
         if (opcode != Cee_Ldc_I4_S) return E_FAIL;
 
         ATL::CComPtr<IInstructionFactory> factory;
@@ -276,7 +276,19 @@ private:
             PCCOR_SIGNATURE signature;
             ULONG signatureSize;
             DWORD attributes;
-            if (!deferMetadata && (FAILED(metadata->GetMethodProps(token, &declaringType, nullptr, 0, nullptr,
+            const auto fault = rule.at("fault");
+            const bool file = fault == "io-error-before-write" || fault == "oom-before-write" ||
+                fault == "thread-abort-before-write";
+            const bool network = rule.at("fault") == "connection-refused-before-connect";
+            if (file || network)
+            {
+                mdMethodDef wrapper;
+                if (!metadata || FAILED(metadata->FindMethod(owner, file ? L"WriteSelected" : L"ConnectSelected", nullptr, 0, &wrapper)) ||
+                    token != wrapper)
+                    throw std::runtime_error("unsupported I/O probe target");
+                (file ? fileMethods : networkMethods).insert(token);
+            }
+            else if (!deferMetadata && (FAILED(metadata->GetMethodProps(token, &declaringType, nullptr, 0, nullptr,
                     &attributes, &signature, &signatureSize, nullptr, nullptr)) ||
                 (declaringType != owner || !IsMdStatic(attributes) ||
                     signatureSize != wrapperSignatureSize ||
@@ -301,19 +313,27 @@ private:
     std::pair<mdMethodDef, std::wstring> ValidateRule(const nlohmann::json& plan, const std::string& hash)
     {
         const bool delay = plan.at("fault") == "delay-before-send";
-        if (!plan.is_object() || plan.size() != (delay ? 12 : 11) ||
+        const auto fault = plan.at("fault");
+        const bool file = fault == "io-error-before-write" || fault == "oom-before-write" ||
+            fault == "thread-abort-before-write";
+        const bool network = plan.at("fault") == "connection-refused-before-connect";
+        if (!plan.is_object() || plan.size() != (network ? 10 : file ? 9 : delay ? 12 : 11) ||
             !plan.at("version").is_number_unsigned() || plan.at("version") != 1 ||
             !plan.at("ilOffset").is_number_unsigned() || plan.at("ilOffset").get<uint64_t>() > MAXDWORD ||
-            (!externalSample && plan.at("ilOffset") != 1) ||
-            plan.at("call") != "System.Data.Common.DbCommand.ExecuteNonQuery()" ||
-            (delay ? !deferMetadata : plan.at("fault") != "timeout-before-send"))
+            (!externalSample && !file && !network && plan.at("ilOffset") != 1) ||
+            plan.at("call") != (file ? "System.IO.File.WriteAllText(string,string)" :
+                network ? "System.Net.Sockets.TcpClient.Connect(string,int)" :
+                "System.Data.Common.DbCommand.ExecuteNonQuery()") ||
+            ((file || network) ? deferMetadata : delay ? !deferMetadata : plan.at("fault") != "timeout-before-send"))
             throw std::runtime_error("unsupported plan fields or values");
 
         const auto limit = plan.at("maxFirings");
         if (!limit.is_number_unsigned() || limit.get<uint64_t>() > INT_MAX)
             throw std::runtime_error("invalid maxFirings");
         std::wstring runtimeRule;
-        for (const auto key : {"server", "database", "procedure"})
+        const auto keys = network ? std::vector<const char*>{"host"} : file ? std::vector<const char*>{"path"} :
+            std::vector<const char*>{"server", "database", "procedure"};
+        for (const auto key : keys)
         {
             const auto value = plan.at(key).get<std::string>();
             if (value.empty() || value.size() > 1024 ||
@@ -324,8 +344,23 @@ private:
             const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
                 static_cast<int>(value.size()), decoded, _countof(decoded));
             if (count == 0) throw std::runtime_error("invalid rule encoding");
+            if (file && !std::filesystem::path(std::wstring(decoded, count)).is_absolute())
+                throw std::runtime_error("expected absolute file path");
             runtimeRule.append(decoded, count);
             runtimeRule += L'\n';
+        }
+        if (network)
+        {
+            const auto port = plan.at("port");
+            if (plan.at("host") != "127.0.0.1" || !port.is_number_unsigned() ||
+                port.get<uint64_t>() < 1 || port.get<uint64_t>() > 65535)
+                throw std::runtime_error("expected loopback host and valid port");
+            runtimeRule += std::to_wstring(port.get<int>()) + L'\n';
+        }
+        if (file && fault != "io-error-before-write")
+        {
+            const auto name = fault.get<std::string>();
+            runtimeRule += std::wstring(name.begin(), name.end()) + L'\n';
         }
         runtimeRule += std::to_wstring(limit.get<int>());
         if (delay)
@@ -355,8 +390,10 @@ private:
         return {token.get<mdMethodDef>(), std::move(runtimeRule)};
     }
 
-    HRESULT RedirectSqlCall(IMethodInfo* method, IInstructionGraph* graph, IInstruction* first, mdMethodDef target)
+    HRESULT RedirectCall(IMethodInfo* method, IInstructionGraph* graph, IInstruction* first, mdMethodDef target)
     {
+        const bool file = fileMethods.count(target) != 0;
+        const bool network = networkMethods.count(target) != 0;
         const DWORD expected = plannedOffsets.at(target);
         ATL::CComPtr<IInstruction> call(first);
         HRESULT result;
@@ -376,7 +413,7 @@ private:
         ILOrdinalOpcode opcode;
         result = call->GetOpCode(&opcode);
         if (FAILED(result)) return result;
-        if (opcode != Cee_Callvirt) return E_FAIL;
+        if (opcode != (file ? Cee_Call : Cee_Callvirt)) return E_FAIL;
 
         ATL::CComPtr<IModuleInfo> module;
         result = method->GetModuleInfo(&module);
@@ -403,16 +440,20 @@ private:
             nullptr, &signature, &signatureSize);
         if (FAILED(result)) return result;
         const BYTE expectedSignature[] = {0x20, 0, 0x08};
-        if (signatureSize != sizeof(expectedSignature) ||
-            std::memcmp(signature, expectedSignature, sizeof(expectedSignature)) != 0)
+        const BYTE expectedFileSignature[] = {0, 2, 1, 0x0e, 0x0e};
+        const BYTE expectedNetworkSignature[] = {0x20, 2, 1, 0x0e, 8};
+        const auto expectedSize = file ? sizeof(expectedFileSignature) :
+            network ? sizeof(expectedNetworkSignature) : sizeof(expectedSignature);
+        if (signatureSize != expectedSize ||
+            std::memcmp(signature, file ? expectedFileSignature : network ? expectedNetworkSignature : expectedSignature, expectedSize) != 0)
             return E_FAIL;
-        if (wcscmp(memberName, L"ExecuteNonQuery") != 0 || TypeFromToken(declaringType) != mdtTypeRef)
+        if (wcscmp(memberName, file ? L"WriteAllText" : network ? L"Connect" : L"ExecuteNonQuery") != 0 || TypeFromToken(declaringType) != mdtTypeRef)
             return E_FAIL;
 
         WCHAR typeName[64];
         result = import->GetTypeRefProps(declaringType, nullptr, typeName, _countof(typeName), nullptr);
         if (FAILED(result)) return result;
-        if (wcscmp(typeName, L"System.Data.Common.DbCommand") != 0) return E_FAIL;
+        if (wcscmp(typeName, file ? L"System.IO.File" : network ? L"System.Net.Sockets.TcpClient" : L"System.Data.Common.DbCommand") != 0) return E_FAIL;
 
         mdToken helper;
         if (externalSample)
@@ -433,7 +474,7 @@ private:
                 if (FAILED(result)) return result;
                 if (owner != program || !IsMdStatic(flags)) return E_FAIL;
             }
-            result = import->FindMethod(program, L"FailBeforeSend", nullptr, 0, &helper);
+            result = import->FindMethod(program, file ? L"WriteWithFault" : network ? L"ConnectWithFault" : L"FailBeforeSend", nullptr, 0, &helper);
         }
         if (FAILED(result)) return result;
 
@@ -485,6 +526,8 @@ private:
     bool externalSample = false;
     bool deferMetadata = false;
     std::map<mdMethodDef, DWORD> plannedOffsets;
+    std::set<mdMethodDef> fileMethods;
+    std::set<mdMethodDef> networkMethods;
     ATL::CComPtr<IProfilerStringManager> strings;
     std::wstring executable;
     GUID plannedMvid{};

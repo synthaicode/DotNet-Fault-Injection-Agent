@@ -61,7 +61,7 @@ internal static class ProjectInput
         .Where(field => field.FieldType == typeof(OpCode)).Select(field => (OpCode)field.GetValue(null))
         .ToDictionary(opcode => unchecked((ushort)opcode.Value));
 
-    internal static int FindSqlCall(byte[] il, int start, int end, MetadataReader metadata)
+    internal static int FindCall(byte[] il, int start, int end, MetadataReader metadata, bool file, bool network)
     {
         var matches = new List<int>();
         for (var offset = 0; offset < end;)
@@ -71,9 +71,9 @@ internal static class ProjectInput
             if (code == 0xfe)
                 code = (ushort)(0xfe00 | il[offset++]);
             var opcode = Opcodes[code];
-            if (instruction >= start && opcode == OpCodes.Callvirt &&
+            if (instruction >= start && opcode == (file ? OpCodes.Call : OpCodes.Callvirt) &&
                 IsExpectedCall(metadata, MetadataTokens.EntityHandle(
-                    System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(il.AsSpan(offset, 4)))))
+                    System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(il.AsSpan(offset, 4))), file, network))
                 matches.Add(instruction);
 
             offset += opcode.OperandType switch
@@ -88,21 +88,21 @@ internal static class ProjectInput
             };
         }
         if (matches.Count != 1)
-            throw new InvalidDataException("Expected exactly one matching SQL call in the PDB sequence point.");
+            throw new InvalidDataException("Expected exactly one matching call in the PDB sequence point.");
         return matches[0];
     }
 
-    private static bool IsExpectedCall(MetadataReader metadata, EntityHandle token)
+    private static bool IsExpectedCall(MetadataReader metadata, EntityHandle token, bool file, bool network)
     {
         if (token.Kind != HandleKind.MemberReference)
             return false;
         var member = metadata.GetMemberReference((MemberReferenceHandle)token);
         if (member.Parent.Kind != HandleKind.TypeReference ||
-            metadata.GetString(member.Name) != "ExecuteNonQuery" ||
-            !metadata.GetBlobBytes(member.Signature).SequenceEqual(new byte[] { 0x20, 0, 0x08 }))
+            metadata.GetString(member.Name) != (file ? "WriteAllText" : network ? "Connect" : "ExecuteNonQuery") ||
+            !metadata.GetBlobBytes(member.Signature).SequenceEqual(file ? new byte[] { 0, 2, 1, 0x0e, 0x0e } : network ? new byte[] { 0x20, 2, 1, 0x0e, 8 } : new byte[] { 0x20, 0, 0x08 }))
             return false;
         var type = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
-        return metadata.GetString(type.Namespace) == "System.Data.Common" &&
-            metadata.GetString(type.Name) == "DbCommand";
+        return metadata.GetString(type.Namespace) == (file ? "System.IO" : network ? "System.Net.Sockets" : "System.Data.Common") &&
+            metadata.GetString(type.Name) == (file ? "File" : network ? "TcpClient" : "DbCommand");
     }
 }

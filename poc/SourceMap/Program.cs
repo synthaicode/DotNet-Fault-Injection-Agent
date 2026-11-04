@@ -26,25 +26,42 @@ try
     {
         var model = compilation.GetSemanticModel(tree);
         return tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>()
-            .Where(call => projectMode || call.Parent is ReturnStatementSyntax { Parent: BlockSyntax block } &&
+            .Where(call => projectMode || call.Parent is StatementSyntax { Parent: BlockSyntax block } &&
                 block.Statements.Count == 1 && block.Parent is MethodDeclarationSyntax)
             .Select(call => (Call: call, Method: model.GetSymbolInfo(call).Symbol as IMethodSymbol))
             .Where(candidate => candidate.Method is { Name: "ExecuteNonQuery", Parameters.Length: 0 } &&
-                candidate.Method.ContainingType.ToDisplayString() == "System.Data.SqlClient.SqlCommand")
+                candidate.Method.ContainingType.ToDisplayString() == "System.Data.SqlClient.SqlCommand" ||
+                candidate.Method is { Name: "WriteAllText", Parameters.Length: 2 } fileMethod &&
+                fileMethod.ContainingType.ToDisplayString() == "System.IO.File" &&
+                fileMethod.Parameters.All(parameter => parameter.Type.SpecialType == SpecialType.System_String) ||
+                candidate.Method is { Name: "Connect", Parameters.Length: 2 } networkMethod &&
+                networkMethod.ContainingType.ToDisplayString() == "System.Net.Sockets.TcpClient" &&
+                networkMethod.Parameters[0].Type.SpecialType == SpecialType.System_String &&
+                networkMethod.Parameters[1].Type.SpecialType == SpecialType.System_Int32)
             .Select(candidate => (candidate.Call,
+                File: candidate.Method.Name == "WriteAllText",
+                Network: candidate.Method.Name == "Connect",
                 Caller: model.GetEnclosingSymbol(candidate.Call.SpanStart) as IMethodSymbol,
                 Line: candidate.Call.GetLocation().GetLineSpan().StartLinePosition.Line + 1));
-    }).Select((candidate, index) => (candidate.Call, candidate.Caller, candidate.Line,
+    }).Select((candidate, index) => (candidate.Call, candidate.Caller, candidate.Line, candidate.File, candidate.Network,
         Id: projectMode ? index + 1 : candidate.Line)).ToArray();
 
     if (args[3] is "list" or "recommend")
     {
         foreach (var candidate in candidates)
         {
-            Console.WriteLine($"{candidate.Id}: {candidate.Caller?.ToDisplayString()} -> SqlCommand.ExecuteNonQuery()");
+            Console.WriteLine($"{candidate.Id}: {candidate.Caller?.ToDisplayString()} -> {(candidate.File ? "File.WriteAllText(string, string)" : candidate.Network ? "TcpClient.Connect(string, int)" : "SqlCommand.ExecuteNonQuery()")}");
             if (projectMode)
                 Console.WriteLine($"   {Path.GetRelativePath(Path.GetDirectoryName(sourcePath), candidate.Call.SyntaxTree.FilePath)}:{candidate.Line}");
-            if (args[3] == "recommend")
+            if (args[3] == "recommend" && candidate.File)
+            {
+                Console.WriteLine("   Trial: throw IOException before opening the file. Check file state, error handling and retry.");
+            }
+            else if (args[3] == "recommend" && candidate.Network)
+            {
+                Console.WriteLine("   Trial: throw SocketException(ConnectionRefused) before connecting. Check fallback or retry.");
+            }
+            else if (args[3] == "recommend")
             {
                 var enclosingCatches = candidate.Call.Ancestors().OfType<TryStatementSyntax>()
                     .Where(statement => statement.Block.Span.Contains(candidate.Call.Span))
@@ -94,7 +111,7 @@ try
         var line = selected.Line;
         var source = selected.Call.SyntaxTree.GetText();
         var caller = selected.Caller ?? throw new InvalidDataException("Missing enclosing method.");
-        if (!projectMode && (caller is not { IsStatic: true, Parameters.Length: 1 } ||
+        if (!projectMode && !selected.File && !selected.Network && (caller is not { IsStatic: true, Parameters.Length: 1 } ||
             caller.ContainingType.ToDisplayString() != "Program" ||
             caller.Parameters[0].Type.ToDisplayString() != "System.Data.SqlClient.SqlCommand" ||
             caller.ReturnType.SpecialType != SpecialType.System_Int32))
@@ -128,19 +145,22 @@ try
                 throw new InvalidDataException("Source checksum does not match the PDB document.");
 
             var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
-            if (!projectMode && (point.Offset != 0 || il is not [0x02, 0x6f, _, _, _, _, 0x2a]))
+            if (!projectMode && !selected.File && !selected.Network && (point.Offset != 0 || il is not [0x02, 0x6f, _, _, _, _, 0x2a]))
                 throw new InvalidDataException("Unexpected IL shape for the selected call.");
             var end = sequencePoints.Where(item => item.Offset > point.Offset).Select(item => item.Offset)
                 .DefaultIfEmpty(il.Length).Min();
-            var ilOffset = ProjectInput.FindSqlCall(il, point.Offset, end, metadata);
+            var ilOffset = ProjectInput.FindCall(il, point.Offset, end, metadata, selected.File, selected.Network);
 
             image.Position = 0;
+            var sha256 = Convert.ToHexString(SHA256.HashData(image));
+            var mvid = metadata.GetGuid(metadata.GetModuleDefinition().Mvid);
+            var methodToken = MetadataTokens.GetToken(methodHandle);
             var plan = new
             {
                 version = 1,
-                sha256 = Convert.ToHexString(SHA256.HashData(image)),
-                mvid = metadata.GetGuid(metadata.GetModuleDefinition().Mvid),
-                methodToken = MetadataTokens.GetToken(methodHandle),
+                sha256,
+                mvid,
+                methodToken,
                 ilOffset,
                 call = "System.Data.Common.DbCommand.ExecuteNonQuery()",
                 fault = "timeout-before-send",
@@ -149,13 +169,26 @@ try
                 procedure = "#ConfirmOrder",
                 maxFirings = 1
             };
-            rules.Add(plan);
+            rules.Add(selected.File ? (object)new
+            {
+                version = 1, sha256, mvid, methodToken, ilOffset,
+                call = "System.IO.File.WriteAllText(string,string)",
+                fault = "io-error-before-write",
+                path = Path.GetFullPath("file-probe.txt"),
+                maxFirings = 1
+            } : selected.Network ? new
+            {
+                version = 1, sha256, mvid, methodToken, ilOffset,
+                call = "System.Net.Sockets.TcpClient.Connect(string,int)",
+                fault = "connection-refused-before-connect",
+                host = "127.0.0.1", port = 48128, maxFirings = 1
+            } : (object)plan);
             if (args.Length == 5) continue;
             Console.WriteLine($"Source: {caller.ToDisplayString()} line {line}");
             Console.WriteLine($"SHA-256: {plan.sha256}");
             Console.WriteLine($"MVID: {plan.mvid}");
             Console.WriteLine($"Method: 0x{MetadataTokens.GetToken(methodHandle):X8}, IL_{ilOffset:X4}");
-            Console.WriteLine("Call: System.Data.Common.DbCommand.ExecuteNonQuery()");
+            Console.WriteLine(selected.File ? "Call: System.IO.File.WriteAllText(string,string)" : selected.Network ? "Call: System.Net.Sockets.TcpClient.Connect(string,int)" : "Call: System.Data.Common.DbCommand.ExecuteNonQuery()");
         }
     }
     if (verify)
@@ -209,7 +242,9 @@ static void VerifyPlan(string path, IEnumerable<JsonElement> verifiedSites)
     {
         var fault = rule.GetProperty("fault").GetString();
         var delay = fault == "delay-before-send";
-        if ((!delay && fault != "timeout-before-send") || ReadKeys(rule).Count != (delay ? 12 : 11))
+        var file = fault is "io-error-before-write" or "oom-before-write" or "thread-abort-before-write";
+        var network = fault == "connection-refused-before-connect";
+        if ((!network && !file && !delay && fault != "timeout-before-send") || ReadKeys(rule).Count != (network ? 10 : file ? 9 : delay ? 12 : 11))
             throw new InvalidDataException("Unexpected rule fields.");
 
         if (rule.GetProperty("version").GetInt32() != 1 || rule.GetProperty("ilOffset").GetInt32() < 0)
@@ -226,7 +261,15 @@ static void VerifyPlan(string path, IEnumerable<JsonElement> verifiedSites)
                 throw new InvalidDataException($"Rule {token}: {key} does not match the verified source and executable.");
         }
 
-        foreach (var key in new[] { "server", "database", "procedure" })
+        var siteFault = site.GetProperty("fault").GetString();
+        if (file != (siteFault == "io-error-before-write") || network != (siteFault == "connection-refused-before-connect"))
+            throw new InvalidDataException($"Rule {token}: incompatible fault type.");
+        if (file && !Path.IsPathFullyQualified(rule.GetProperty("path").GetString()))
+            throw new InvalidDataException($"Rule {token}: expected an absolute file path.");
+        if (network && (rule.GetProperty("host").GetString() != "127.0.0.1" ||
+            rule.GetProperty("port").GetInt32() is < 1 or > 65535))
+            throw new InvalidDataException($"Rule {token}: expected a loopback host and valid port.");
+        foreach (var key in network ? Array.Empty<string>() : file ? new[] { "path" } : new[] { "server", "database", "procedure" })
         {
             var value = rule.GetProperty(key).GetString();
             if (string.IsNullOrEmpty(value) || Encoding.UTF8.GetByteCount(value) > 1024 ||
