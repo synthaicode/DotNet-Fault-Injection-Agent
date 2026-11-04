@@ -54,6 +54,8 @@ try
                 Console.WriteLine(catches.Length == 0
                     ? "   Trial: check how a pre-send failure propagates; no enclosing catch was found in this method."
                     : $"   Trial: check what happens after a pre-send failure; enclosing catches: {string.Join(", ", catches)}.");
+                Console.WriteLine("   Sync trial: delay a successful SQL response. While waiting, check UI or other work can progress and completion state is unchanged. After success, check one completion per call.");
+                Console.WriteLine("   Observation only: a synchronous API does not establish which thread calls it or prove a synchronization defect.");
             }
         }
         return 0;
