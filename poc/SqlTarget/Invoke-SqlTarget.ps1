@@ -5,10 +5,14 @@ param(
     [Parameter(Mandatory)][string] $Plan,
     [Parameter(Mandatory)][string] $Engine,
     [Parameter(Mandatory)][string] $ExtensionConfig,
-    [switch] $Concurrent
+    [switch] $Concurrent,
+    [ValidateSet("enable", "disable", "call")][string[]] $ControlSequence
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Concurrent -and $ControlSequence.Count) {
+    throw 'Concurrent and ControlSequence cannot be combined.'
+}
 $targetFile = Get-Item -LiteralPath $Target
 if ($targetFile.PSIsContainer -or $targetFile.Name -ne 'SqlTarget.exe') {
     throw 'This launcher accepts only the SqlTarget.exe test fixture.'
@@ -20,6 +24,7 @@ $configPath = (Resolve-Path -LiteralPath $ExtensionConfig).ProviderPath
 $start = [System.Diagnostics.ProcessStartInfo]::new($targetFile.FullName)
 $start.UseShellExecute = $false
 $start.RedirectStandardOutput = $true
+$start.RedirectStandardInput = [bool]$ControlSequence.Count
 $start.RedirectStandardError = $true
 foreach ($key in @($start.Environment.Keys)) {
     if ($key -match '^(COR_(ENABLE_PROFILING|PROFILER)|MicrosoftInstrumentationEngine_|WINDOWS_CHAOS_)') {
@@ -37,10 +42,40 @@ if ($Concurrent) {
     $start.ArgumentList.Add('--concurrent')
 }
 
+if ($ControlSequence.Count) {
+    $start.ArgumentList.Add('--controlled')
+}
+
+function Read-ControlReply($Process) {
+    $reply = $Process.StandardOutput.ReadLineAsync()
+    if (-not $reply.Wait(10000)) {
+        throw 'The controlled process did not reply within 10 seconds.'
+    }
+    $line = $reply.GetAwaiter().GetResult()
+    if ($null -eq $line) {
+        throw 'The controlled process closed its output before replying.'
+    }
+    $line
+}
+
 $process = [System.Diagnostics.Process]::Start($start)
 try {
-    $stdout = $process.StandardOutput.ReadToEndAsync()
     $stderr = $process.StandardError.ReadToEndAsync()
+    $replies = @()
+    if ($ControlSequence.Count) {
+        $ready = Read-ControlReply $process
+        if ($ready -cne 'ready: disabled') {
+            throw "Unexpected control greeting: $ready"
+        }
+        $replies = @($ready; foreach ($command in $ControlSequence) {
+            $process.StandardInput.WriteLine($command.ToLowerInvariant())
+            $process.StandardInput.Flush()
+            Read-ControlReply $process
+        })
+        $process.StandardInput.WriteLine('quit')
+        $process.StandardInput.Close()
+    }
+    $stdout = $process.StandardOutput.ReadToEndAsync()
     if (-not $process.WaitForExit(30000)) {
         $process.Kill()
         $process.WaitForExit()
@@ -59,10 +94,15 @@ try {
         PlanRejected = [bool]($lines -cmatch '^plan rejected:')
         IlRewritten = [bool]($lines -cmatch '^IL rewritten:')
         Firings = @($lines -cmatch '^fault fired:').Count
+        ControlReplies = $replies
         Output = $output.TrimEnd()
         Diagnostics = $diagnostics.TrimEnd()
     }
 }
 finally {
+    if (-not $process.HasExited) {
+        $process.Kill()
+        $process.WaitForExit()
+    }
     $process.Dispose()
 }

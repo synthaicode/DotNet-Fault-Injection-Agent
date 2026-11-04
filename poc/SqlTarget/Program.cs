@@ -14,6 +14,8 @@ internal static class Program
         private static int remaining = Fields.Length == 4 && int.TryParse(Fields[3], out int limit)
             ? limit : 0;
 
+        internal static bool Enabled = true;
+
         internal static bool TryConsume()
         {
             int count;
@@ -37,6 +39,7 @@ internal static class Program
             return;
         }
 
+        bool controlled = args.Length == 1 && args[0] == "--controlled";
         using (var connection = new SqlConnection(@"Server=(localdb)\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=true"))
         {
             connection.Open();
@@ -53,6 +56,12 @@ internal static class Program
             using (var command = new SqlCommand("#ConfirmOrder", connection))
             {
                 command.CommandType = CommandType.StoredProcedure;
+                if (controlled)
+                {
+                    RunControlled(command);
+                    return;
+                }
+
                 Run("other", () => Other(command));
                 command.CommandText = "#OtherOrder";
                 Run("selected with different procedure", () => Selected(command));
@@ -64,6 +73,35 @@ internal static class Program
             using (var count = new SqlCommand("SELECT COUNT(*) FROM #Received", connection))
             {
                 Console.WriteLine("DB rows: " + count.ExecuteScalar());
+            }
+        }
+    }
+
+    private static void RunControlled(SqlCommand command)
+    {
+        InjectionRule.Enabled = false;
+        Console.WriteLine("ready: disabled");
+        string request;
+        while ((request = Console.ReadLine()) != null)
+        {
+            switch (request)
+            {
+                case "enable":
+                    InjectionRule.Enabled = true;
+                    Console.WriteLine("enabled");
+                    break;
+                case "disable":
+                    InjectionRule.Enabled = false;
+                    Console.WriteLine("disabled");
+                    break;
+                case "call":
+                    Run("selected", () => Selected(command));
+                    break;
+                case "quit":
+                    return;
+                default:
+                    Console.WriteLine("unknown command");
+                    break;
             }
         }
     }
@@ -131,7 +169,7 @@ internal static class Program
     private static int FailBeforeSend(SqlCommand command)
     {
         var fields = InjectionRule.Fields;
-        if (fields.Length == 4 &&
+        if (InjectionRule.Enabled && fields.Length == 4 &&
             command != null &&
             command.Connection != null &&
             command.CommandType == CommandType.StoredProcedure &&

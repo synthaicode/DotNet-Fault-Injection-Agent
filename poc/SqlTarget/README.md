@@ -44,3 +44,23 @@ PowerShell 7で、対象EXE、JSON計画、CLR Instrumentation EngineのDLL、�
 同時実行試験には -Concurrent を追加します。ランチャーは検証用の子プロセスにだけ起動設定を渡し、終了コード、計画受理と拒否の記録、IL書換え、発火回数、元の出力を別々に返します。受理後にロード済みモジュールの照合で拒否される場合があるため、受理と拒否はそれぞれ記録の有無を表します。終了コード0でも、発火したかどうかは発火回数で確認します。ローカルの未署名拡張を使うため、署名検証の無効化は検証用の子プロセスに限定します。
 
 既定の計画で一回発火、上限0で書換えのみ、負の上限で計画拒否と書換え・発火なしを確認しました。
+
+## 起動中に有効・無効を切り替える試験
+
+Program.Selected を選んで現在のEXE用のJSON計画を生成し、maxFirings を2に設定します。同じ子プロセスへ標準入力でコマンドを順に送り、標準出力で応答を受け取ります。
+
+```powershell
+./poc/SqlTarget/Invoke-SqlTarget.ps1 -Target $exe -Plan $plan -Engine $engine -ExtensionConfig $config -ControlSequence call,enable,call,disable,call,enable,call,call
+```
+
+| 呼び出し時の状態 | 結果 |
+|---|---|
+| 起動直後の無効 | SQL実行成功 |
+| 有効化後 | TimeoutException |
+| 発火枠が1回残った状態で無効化 | SQL実行成功 |
+| 再有効化後 | TimeoutException |
+| 発火枠を使い切った後 | SQL実行成功 |
+
+有効化と無効化はプロセス内ヘルパーの発火判定に反映されます。無効化は発火枠を消費せず、再有効化は発火枠をリセットしません。試験は一つのPIDで完了し、終了コードは0、発火記録は2回、試験前後のEXEのSHA-256は一致しました。
+
+制御コマンドとSQL呼び出しは専用の検証モードで直列に処理します。独立したAgentからの接続、実行中の呼び出しと無効化が競合した場合の挙動、既存Windowsサービスの制御は未検証です。
