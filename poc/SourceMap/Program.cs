@@ -46,14 +46,26 @@ try
                 Console.WriteLine($"   {Path.GetRelativePath(Path.GetDirectoryName(sourcePath), candidate.Call.SyntaxTree.FilePath)}:{candidate.Line}");
             if (args[3] == "recommend")
             {
-                var catches = candidate.Call.Ancestors().OfType<TryStatementSyntax>()
+                var enclosingCatches = candidate.Call.Ancestors().OfType<TryStatementSyntax>()
                     .Where(statement => statement.Block.Span.Contains(candidate.Call.Span))
-                    .SelectMany(statement => statement.Catches)
-                    .Select(clause => clause.Declaration?.Type.ToString() ?? "any exception")
+                    .SelectMany(statement => statement.Catches).ToArray();
+                var catches = enclosingCatches.Select(clause => clause.Declaration?.Type.ToString() ?? "any exception")
                     .Distinct().ToArray();
                 Console.WriteLine(catches.Length == 0
                     ? "   Trial: check how a pre-send failure propagates; no enclosing catch was found in this method."
                     : $"   Trial: check what happens after a pre-send failure; enclosing catches: {string.Join(", ", catches)}.");
+                foreach (var clause in enclosingCatches)
+                {
+                    var line = clause.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+                    var assignments = clause.Block.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+                        .Select(assignment => assignment.Left.ToString()).Distinct().ToArray();
+                    if (assignments.Length > 0)
+                        Console.WriteLine($"   Evidence at line {line}: catch writes {string.Join(", ", assignments)}.");
+                }
+                Console.WriteLine("   Intervention: fail the confirmed stored-procedure call once before send (timeout-before-send).");
+                Console.WriteLine("   Observe: worker state, recorded exception, visible notification and DB writes.");
+                Console.WriteLine("   Pass if the confirmed recovery or stop behavior occurs, the expected notification is visible, and the failed call creates no DB write.");
+                Console.WriteLine("   Shared-state trial: if a worker publishes a flag read by another thread, vary the write/read order and observe whether the reader reacts. Direct memory-visibility fault injection is unsupported.");
                 Console.WriteLine("   Sync trial: delay a successful SQL response. While waiting, check UI or other work can progress and completion state is unchanged. After success, check one completion per call.");
                 Console.WriteLine("   Completion-order trial (when two workers share completion state): start call A, delay only A, then let call B complete before A.");
                 Console.WriteLine("   Check: correlate SQL completion with each call. Require completion order B then A and a count delta of exactly +1 after B, then +1 after A. A missing or repeated update fails even if the final count matches.");
