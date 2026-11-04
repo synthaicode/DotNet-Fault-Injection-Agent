@@ -55,6 +55,8 @@ try
                     ? "   Trial: check how a pre-send failure propagates; no enclosing catch was found in this method."
                     : $"   Trial: check what happens after a pre-send failure; enclosing catches: {string.Join(", ", catches)}.");
                 Console.WriteLine("   Sync trial: delay a successful SQL response. While waiting, check UI or other work can progress and completion state is unchanged. After success, check one completion per call.");
+                Console.WriteLine("   Completion-order trial (when two workers share completion state): start call A, delay only A, then let call B complete before A.");
+                Console.WriteLine("   Check: correlate SQL completion with each call. Require completion order B then A and a count delta of exactly +1 after B, then +1 after A. A missing or repeated update fails even if the final count matches.");
                 Console.WriteLine("   Observation only: a synchronous API does not establish which thread calls it or prove a synchronization defect.");
             }
         }
