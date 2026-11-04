@@ -2,11 +2,21 @@ using System;
 using System.Data;
 using System.Data.SqlClient;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 internal static class Program
 {
-    private static void Main()
+    private static int fired;
+
+    private static void Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--concurrent")
+        {
+            RunConcurrent();
+            return;
+        }
+
         using (var connection = new SqlConnection(@"Server=(localdb)\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=true"))
         {
             connection.Open();
@@ -23,16 +33,53 @@ internal static class Program
             using (var command = new SqlCommand("#ConfirmOrder", connection))
             {
                 command.CommandType = CommandType.StoredProcedure;
-                Run("selected", () => Selected(command));
                 Run("other", () => Other(command));
                 command.CommandText = "#OtherOrder";
                 Run("selected with different procedure", () => Selected(command));
+                command.CommandText = "#ConfirmOrder";
+                Run("selected", () => Selected(command));
+                Run("selected again", () => Selected(command));
             }
 
             using (var count = new SqlCommand("SELECT COUNT(*) FROM #Received", connection))
             {
                 Console.WriteLine("DB rows: " + count.ExecuteScalar());
             }
+        }
+    }
+
+    private static void RunConcurrent()
+    {
+        const string connectionString = @"Server=(localdb)\MSSQLLocalDB;Initial Catalog=tempdb;Integrated Security=true";
+        using (var first = new SqlConnection(connectionString))
+        using (var second = new SqlConnection(connectionString))
+        using (var gate = new Barrier(2))
+        {
+            first.Open();
+            second.Open();
+            PrepareConcurrentSession(first);
+            PrepareConcurrentSession(second);
+            Task.WaitAll(
+                Task.Run(() => RunConcurrentCall(first, gate, "first")),
+                Task.Run(() => RunConcurrentCall(second, gate, "second")));
+        }
+    }
+
+    private static void PrepareConcurrentSession(SqlConnection connection)
+    {
+        using (var command = new SqlCommand("CREATE PROCEDURE #ConfirmOrder AS SET NOCOUNT ON", connection))
+        {
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static void RunConcurrentCall(SqlConnection connection, Barrier gate, string label)
+    {
+        using (var command = new SqlCommand("#ConfirmOrder", connection))
+        {
+            command.CommandType = CommandType.StoredProcedure;
+            gate.SignalAndWait();
+            Run(label, () => Selected(command));
         }
     }
 
@@ -68,7 +115,8 @@ internal static class Program
             command.CommandType == CommandType.StoredProcedure &&
             string.Equals(command.Connection.DataSource, @"(localdb)\MSSQLLocalDB", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(command.Connection.Database, "tempdb", StringComparison.Ordinal) &&
-            string.Equals(command.CommandText, "#ConfirmOrder", StringComparison.Ordinal))
+            string.Equals(command.CommandText, "#ConfirmOrder", StringComparison.Ordinal) &&
+            Interlocked.CompareExchange(ref fired, 1, 0) == 0)
         {
             throw new TimeoutException("Injected before ExecuteNonQuery.");
         }
