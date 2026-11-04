@@ -9,6 +9,7 @@ param(
     [Parameter(Mandatory)][string] $Database,
     [Parameter(Mandatory)][string] $Procedure,
     [Parameter(Mandatory)][ValidateRange(1, 2147483647)][int] $MaxFirings,
+    [ValidateRange(1, 10000)][int] $DelayMs,
     [Parameter(Mandatory)][string] $OutputPlan
 )
 
@@ -24,6 +25,10 @@ try {
     $plan.database = $Database
     $plan.procedure = $Procedure
     $plan.maxFirings = $MaxFirings
+    if ($PSBoundParameters.ContainsKey("DelayMs")) {
+        $plan.fault = "delay-before-send"
+        $plan.delayMs = $DelayMs
+    }
     $plan | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8NoBOM -LiteralPath $temp
 
     dotnet run --no-build --project "$PSScriptRoot/SourceMap.csproj" -- $Source $Executable $References verify $temp

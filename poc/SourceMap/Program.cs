@@ -207,7 +207,9 @@ static void VerifyPlan(string path, IEnumerable<JsonElement> verifiedSites)
     var seen = new HashSet<(int, int)>();
     foreach (var rule in rules)
     {
-        if (ReadKeys(rule).Count != 11)
+        var fault = rule.GetProperty("fault").GetString();
+        var delay = fault == "delay-before-send";
+        if ((!delay && fault != "timeout-before-send") || ReadKeys(rule).Count != (delay ? 12 : 11))
             throw new InvalidDataException("Unexpected rule fields.");
 
         if (rule.GetProperty("version").GetInt32() != 1 || rule.GetProperty("ilOffset").GetInt32() < 0)
@@ -218,7 +220,7 @@ static void VerifyPlan(string path, IEnumerable<JsonElement> verifiedSites)
         if (!seen.Add((token, offset)) || !sites.TryGetValue((token, offset), out var site))
             throw new InvalidDataException($"Unknown or repeated call site: method {token}, IL offset {offset}.");
 
-        foreach (var key in new[] { "version", "sha256", "mvid", "methodToken", "ilOffset", "call", "fault" })
+        foreach (var key in new[] { "version", "sha256", "mvid", "methodToken", "ilOffset", "call" })
         {
             if (!JsonElement.DeepEquals(rule.GetProperty(key), site.GetProperty(key)))
                 throw new InvalidDataException($"Rule {token}: {key} does not match the verified source and executable.");
@@ -232,6 +234,8 @@ static void VerifyPlan(string path, IEnumerable<JsonElement> verifiedSites)
                 throw new InvalidDataException($"Rule {token}: invalid {key}.");
         }
 
+        if (delay && rule.GetProperty("delayMs").GetInt32() is < 1 or > 10000)
+            throw new InvalidDataException($"Rule {token}: delayMs must be between 1 and 10000.");
         if (rule.GetProperty("maxFirings").GetInt32() < 0)
             throw new InvalidDataException($"Rule {token}: invalid maxFirings.");
     }

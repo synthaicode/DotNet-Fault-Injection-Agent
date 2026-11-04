@@ -14,16 +14,28 @@ namespace ChaosOrderBridge
         {
             var rule = Rules.GetOrAdd(methodToken, token => new Rule(token));
             var fields = rule.Fields;
-            if (fields.Length == 4 && command != null && command.Connection != null &&
+            var delayed = false;
+            var matches = (fields.Length == 4 || fields.Length == 5) && command != null && command.Connection != null &&
                 command.CommandType == CommandType.StoredProcedure &&
                 string.Equals(command.Connection.DataSource, fields[0], StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(command.Connection.Database, fields[1], StringComparison.Ordinal) &&
-                string.Equals(command.CommandText, fields[2], StringComparison.Ordinal) && rule.TryConsume())
+                string.Equals(command.CommandText, fields[2], StringComparison.Ordinal);
+            if (matches && rule.TryConsume())
             {
-                Console.Error.WriteLine("fault fired: methodToken=" + methodToken + " timeout-before-send");
-                throw new TimeoutException("Windows Chaos Agent: timeout before SQL send.");
+                if (fields.Length == 4)
+                {
+                    Console.Error.WriteLine("fault fired: methodToken=" + methodToken + " timeout-before-send");
+                    throw new TimeoutException("Windows Chaos Agent: timeout before SQL send.");
+                }
+
+                delayed = true;
+                Console.Error.WriteLine("fault fired: methodToken=" + methodToken + " delay-before-send");
+                Thread.Sleep(int.Parse(fields[4], System.Globalization.CultureInfo.InvariantCulture));
             }
-            return command.ExecuteNonQuery();
+            var result = command.ExecuteNonQuery();
+            if (matches && fields.Length == 5)
+                Console.Error.WriteLine("SQL completed: delayed=" + delayed);
+            return result;
         }
 
         private sealed class Rule
@@ -34,7 +46,7 @@ namespace ChaosOrderBridge
             internal Rule(int token)
             {
                 Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + token) ?? "").Split('\n');
-                remaining = Fields.Length == 4 && int.TryParse(Fields[3], out int limit) ? limit : 0;
+                remaining = (Fields.Length == 4 || Fields.Length == 5) && int.TryParse(Fields[3], out int limit) ? limit : 0;
             }
 
             internal bool TryConsume()

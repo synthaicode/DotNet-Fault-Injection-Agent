@@ -279,12 +279,13 @@ private:
 
     std::pair<mdMethodDef, std::wstring> ValidateRule(const nlohmann::json& plan, const std::string& hash)
     {
-        if (!plan.is_object() || plan.size() != 11 ||
+        const bool delay = plan.at("fault") == "delay-before-send";
+        if (!plan.is_object() || plan.size() != (delay ? 12 : 11) ||
             !plan.at("version").is_number_unsigned() || plan.at("version") != 1 ||
             !plan.at("ilOffset").is_number_unsigned() || plan.at("ilOffset").get<uint64_t>() > MAXDWORD ||
             (!externalSample && plan.at("ilOffset") != 1) ||
             plan.at("call") != "System.Data.Common.DbCommand.ExecuteNonQuery()" ||
-            plan.at("fault") != "timeout-before-send")
+            (delay ? !externalSample : plan.at("fault") != "timeout-before-send"))
             throw std::runtime_error("unsupported plan fields or values");
 
         const auto limit = plan.at("maxFirings");
@@ -306,6 +307,14 @@ private:
             runtimeRule += L'\n';
         }
         runtimeRule += std::to_wstring(limit.get<int>());
+        if (delay)
+        {
+            const auto milliseconds = plan.at("delayMs");
+            if (!milliseconds.is_number_unsigned() || milliseconds.get<uint64_t>() < 1 ||
+                milliseconds.get<uint64_t>() > 10000)
+                throw std::runtime_error("invalid delayMs");
+            runtimeRule += L'\n' + std::to_wstring(milliseconds.get<int>());
+        }
 
         const auto token = plan.at("methodToken");
         if (!token.is_number_unsigned() || token.get<uint64_t>() < 0x06000001 ||
