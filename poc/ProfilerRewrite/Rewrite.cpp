@@ -4,6 +4,13 @@
 #include <cor.h>
 #include <InstrumentationEngine.h>
 #include <cwchar>
+#include <cstring>
+#include <bcrypt.h>
+#include <filesystem>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <cstdio>
+#include <set>
 
 class RewriteModule : public ATL::CAtlDllModuleT<RewriteModule> {};
 static RewriteModule module;
@@ -21,7 +28,17 @@ public:
 
     HRESULT STDMETHODCALLTYPE Initialize(IProfilerManager* manager) override
     {
-        return manager->QueryInterface(IID_PPV_ARGS(&strings));
+        const HRESULT result = manager->QueryInterface(IID_PPV_ARGS(&strings));
+        if (FAILED(result)) return result;
+        try
+        {
+            LoadPlan();
+        }
+        catch (const std::exception& error)
+        {
+            std::fprintf(stderr, "plan rejected: %s\n", error.what());
+        }
+        return S_OK;
     }
 
     HRESULT STDMETHODCALLTYPE ShouldInstrumentMethod(IMethodInfo* method, BOOL rejit, BOOL* instrument) override
@@ -41,10 +58,34 @@ public:
         strings->FreeString(moduleName);
         if (!valueTarget && !sqlTarget) return S_OK;
 
+        if (sqlTarget)
+        {
+            if (!planReady) return S_OK;
+            mdMethodDef token;
+            result = method->GetMethodToken(&token);
+            if (FAILED(result) || token != plannedMethod) return result;
+
+            GUID mvid;
+            result = module->GetMVID(&mvid);
+            if (FAILED(result)) return result;
+            if (mvid != plannedMvid)
+            {
+                std::fprintf(stderr, "plan rejected: loaded module MVID mismatch\n");
+                return S_OK;
+            }
+
+            BSTR path = nullptr;
+            result = module->GetFullPath(&path);
+            if (FAILED(result)) return result;
+            *instrument = path && _wcsicmp(path, executable.c_str()) == 0;
+            strings->FreeString(path);
+            return S_OK;
+        }
+
         BSTR name = nullptr;
         result = method->GetFullName(&name);
         if (FAILED(result)) return result;
-        *instrument = name && wcscmp(name, valueTarget ? L"Program.GetValue" : L"Program.Selected") == 0;
+        *instrument = name && wcscmp(name, L"Program.GetValue") == 0;
         strings->FreeString(name);
         return S_OK;
     }
@@ -92,6 +133,85 @@ public:
     }
 
 private:
+    void LoadPlan()
+    {
+        wchar_t path[32768];
+        const DWORD length = GetEnvironmentVariableW(L"WINDOWS_CHAOS_PLAN", path, _countof(path));
+        if (length == 0) return;
+        if (length >= _countof(path)) throw std::runtime_error("plan path too long");
+
+        std::ifstream input{std::filesystem::path(path), std::ios::binary | std::ios::ate};
+        const auto size = input.tellg();
+        if (size <= 0 || size > 8192) throw std::runtime_error("invalid plan file size");
+        input.seekg(0);
+
+        bool duplicate = false;
+        std::set<std::string> keys;
+        auto plan = nlohmann::json::parse(input, [&](int depth, auto event, auto& value)
+        {
+            if (depth == 1 && event == nlohmann::json::parse_event_t::key)
+                duplicate |= !keys.insert(value.template get<std::string>()).second;
+            return true;
+        });
+        if (duplicate || !plan.is_object() || plan.size() != 11 ||
+            !plan.at("version").is_number_unsigned() || plan.at("version") != 1 ||
+            !plan.at("ilOffset").is_number_unsigned() || plan.at("ilOffset") != 1 ||
+            plan.at("call") != "System.Data.Common.DbCommand.ExecuteNonQuery()" ||
+            plan.at("fault") != "timeout-before-send" ||
+            plan.at("server") != "(localdb)\\MSSQLLocalDB" || plan.at("database") != "tempdb" ||
+            plan.at("procedure") != "#ConfirmOrder" ||
+            !plan.at("maxFirings").is_number_unsigned() || plan.at("maxFirings") != 1)
+            throw std::runtime_error("unsupported plan fields or values");
+
+        const auto token = plan.at("methodToken");
+        if (!token.is_number_unsigned() || token.get<uint64_t>() < 0x06000001 ||
+            token.get<uint64_t>() > 0x06ffffff)
+            throw std::runtime_error("invalid method token");
+
+        const auto mvid = plan.at("mvid").get<std::string>();
+        if (mvid.size() != 36) throw std::runtime_error("invalid MVID");
+        const std::wstring guid = L"{" + std::wstring(mvid.begin(), mvid.end()) + L"}";
+        if (FAILED(CLSIDFromString(guid.c_str(), &plannedMvid)))
+            throw std::runtime_error("invalid MVID");
+
+        const DWORD exeLength = GetModuleFileNameW(nullptr, path, _countof(path));
+        if (exeLength == 0 || exeLength >= _countof(path))
+            throw std::runtime_error("cannot resolve process executable");
+        executable.assign(path, exeLength);
+        if (_wcsicmp(std::filesystem::path(executable).filename().c_str(), L"SqlTarget.exe") != 0)
+            throw std::runtime_error("unsupported process executable");
+
+        std::ifstream image{std::filesystem::path(executable), std::ios::binary | std::ios::ate};
+        const auto imageSize = image.tellg();
+        if (imageSize <= 0 || imageSize > 16 * 1024 * 1024)
+            throw std::runtime_error("invalid executable size");
+        std::vector<unsigned char> bytes(static_cast<size_t>(imageSize));
+        image.seekg(0);
+        if (!image.read(reinterpret_cast<char*>(bytes.data()), bytes.size()))
+            throw std::runtime_error("cannot read executable");
+
+        BCRYPT_ALG_HANDLE algorithm;
+        if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0)
+            throw std::runtime_error("cannot initialize SHA-256");
+        unsigned char digest[32];
+        const auto status = BCryptHash(algorithm, nullptr, 0, bytes.data(),
+            static_cast<ULONG>(bytes.size()), digest, sizeof(digest));
+        BCryptCloseAlgorithmProvider(algorithm, 0);
+        if (status != 0) throw std::runtime_error("cannot hash executable");
+
+        std::string hash;
+        for (const auto byte : digest)
+        {
+            hash += "0123456789ABCDEF"[byte >> 4];
+            hash += "0123456789ABCDEF"[byte & 15];
+        }
+        if (plan.at("sha256") != hash) throw std::runtime_error("executable SHA-256 mismatch");
+
+        plannedMethod = token.get<mdMethodDef>();
+        planReady = true;
+        std::fprintf(stderr, "plan accepted: executable and rule validated\n");
+    }
+
     static HRESULT RedirectSqlCall(IMethodInfo* method, IInstructionGraph* graph, IInstruction* first)
     {
         ATL::CComPtr<IInstruction> call;
@@ -103,6 +223,10 @@ private:
         result = call->GetOpCode(&opcode);
         if (FAILED(result)) return result;
         if (opcode != Cee_Callvirt) return E_FAIL;
+        DWORD offset;
+        result = call->GetOriginalOffset(&offset);
+        if (FAILED(result)) return result;
+        if (offset != 1) return E_FAIL;
 
         ATL::CComPtr<IModuleInfo> module;
         result = method->GetModuleInfo(&module);
@@ -123,9 +247,15 @@ private:
 
         mdToken declaringType;
         WCHAR memberName[64];
+        PCCOR_SIGNATURE signature;
+        ULONG signatureSize;
         result = import->GetMemberRefProps(original, &declaringType, memberName, _countof(memberName),
-            nullptr, nullptr, nullptr);
+            nullptr, &signature, &signatureSize);
         if (FAILED(result)) return result;
+        const BYTE expectedSignature[] = {0x20, 0, 0x08};
+        if (signatureSize != sizeof(expectedSignature) ||
+            std::memcmp(signature, expectedSignature, sizeof(expectedSignature)) != 0)
+            return E_FAIL;
         if (wcscmp(memberName, L"ExecuteNonQuery") != 0 || TypeFromToken(declaringType) != mdtTypeRef)
             return E_FAIL;
 
@@ -149,10 +279,16 @@ private:
         ATL::CComPtr<IInstruction> replacement;
         result = factory->CreateTokenOperandInstruction(Cee_Call, helper, &replacement);
         if (FAILED(result)) return result;
-        return graph->Replace(call, replacement);
+        result = graph->Replace(call, replacement);
+        if (SUCCEEDED(result)) std::fprintf(stderr, "IL rewritten: SQL call redirected\n");
+        return result;
     }
 
     ATL::CComPtr<IProfilerStringManager> strings;
+    std::wstring executable;
+    GUID plannedMvid{};
+    mdMethodDef plannedMethod{};
+    bool planReady = false;
 };
 
 class RewriteFactory : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,

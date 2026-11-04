@@ -10,8 +10,8 @@ using Microsoft.CodeAnalysis.Text;
 
 try
 {
-    if (args.Length != 4)
-        throw new ArgumentException("Usage: SourceMap <Program.cs> <SqlTarget.exe> <net48 reference directory> <list|source line>");
+    if (args.Length is < 4 or > 5)
+        throw new ArgumentException("Usage: SourceMap <Program.cs> <SqlTarget.exe> <net48 reference directory> <list|source line> [plan.json]");
 
     var sourcePath = Path.GetFullPath(args[0]);
     var exePath = Path.GetFullPath(args[1]);
@@ -98,9 +98,30 @@ try
             throw new InvalidDataException("Unexpected call declaring type.");
 
         image.Position = 0;
+        var plan = new
+        {
+            version = 1,
+            sha256 = Convert.ToHexString(SHA256.HashData(image)),
+            mvid = metadata.GetGuid(metadata.GetModuleDefinition().Mvid),
+            methodToken = MetadataTokens.GetToken(methodHandle),
+            ilOffset = 1,
+            call = "System.Data.Common.DbCommand.ExecuteNonQuery()",
+            fault = "timeout-before-send",
+            server = @"(localdb)\MSSQLLocalDB",
+            database = "tempdb",
+            procedure = "#ConfirmOrder",
+            maxFirings = 1
+        };
+        if (args.Length == 5)
+        {
+            using var output = new FileStream(args[4], FileMode.CreateNew);
+            System.Text.Json.JsonSerializer.Serialize(output, plan,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            return 0;
+        }
         Console.WriteLine($"Source: {caller.ToDisplayString()} line {line}");
-        Console.WriteLine($"SHA-256: {Convert.ToHexString(SHA256.HashData(image))}");
-        Console.WriteLine($"MVID: {metadata.GetGuid(metadata.GetModuleDefinition().Mvid)}");
+        Console.WriteLine($"SHA-256: {plan.sha256}");
+        Console.WriteLine($"MVID: {plan.mvid}");
         Console.WriteLine($"Method: 0x{MetadataTokens.GetToken(methodHandle):X8}, IL_0001");
         Console.WriteLine("Call: System.Data.Common.DbCommand.ExecuteNonQuery()");
     }

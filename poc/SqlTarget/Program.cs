@@ -118,6 +118,7 @@ internal static class Program
             string.Equals(command.CommandText, "#ConfirmOrder", StringComparison.Ordinal) &&
             Interlocked.CompareExchange(ref fired, 1, 0) == 0)
         {
+            Console.Error.WriteLine("fault fired: timeout-before-send");
             throw new TimeoutException("Injected before ExecuteNonQuery.");
         }
 

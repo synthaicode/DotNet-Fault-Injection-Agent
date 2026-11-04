@@ -2,7 +2,7 @@
 
 .NET Framework 4.8向けのx64テストプログラムです。ローカルの SQL Server LocalDB の MSSQLLocalDB を使い、同一接続内に一時テーブルと二つの一時ストアドプロシージャを作成します。接続終了で一時オブジェクトは破棄されます。
 
-リポジトリのルートで `dotnet build poc/SqlTarget -c Release` を実行し、生成された SqlTarget.exe を使います。[拡張のビルドと起動条件](../ProfilerRewrite/README.md)に従い、プロファイラー無効、拡張あり、プロファイラー無効の順に、同じEXEを起動します。
+リポジトリのルートで `dotnet build poc/SqlTarget -c Release` を実行し、生成された SqlTarget.exe を使います。[拡張のビルドと起動条件](../ProfilerRewrite/README.md)に従い、プロファイラー無効、選択箇所用の[JSON計画](../SourceMap/README.md)と拡張あり、プロファイラー無効の順に、同じEXEを起動します。
 
 | 起動 | 選択した箇所で対象プロシージャ | 別の箇所で対象プロシージャ | 選択した箇所で別プロシージャ | 一致する二回目の呼び出し | DBの記録行数 |
 |---|---|---|---|---|---:|
