@@ -56,7 +56,8 @@ public:
         BSTR moduleName = nullptr;
         result = module->GetModuleName(&moduleName);
         if (FAILED(result)) return result;
-        const bool valueTarget = moduleName && wcscmp(moduleName, L"ProfilerTarget.exe") == 0;
+        const bool valueTarget = moduleName && (wcscmp(moduleName, L"ProfilerTarget.exe") == 0 ||
+            wcscmp(moduleName, L"ProfilerTarget.dll") == 0);
         const bool sqlTarget = moduleName && _wcsicmp(moduleName, targetName.c_str()) == 0;
         strings->FreeString(moduleName);
         if (!valueTarget && !sqlTarget) return S_OK;
@@ -198,6 +199,12 @@ private:
                 throw std::runtime_error("unsupported sample executable");
             externalSample = true;
         }
+        else if (_wcsicmp(targetName.c_str(), L"CoreFileTarget.exe") == 0)
+        {
+            coreFileProbe = true;
+            executable = std::filesystem::path(executable).replace_extension(L".dll").wstring();
+            targetName = L"CoreFileTarget.dll";
+        }
         else if (_wcsicmp(targetName.c_str(), L"SqlTarget.exe") != 0)
             throw std::runtime_error("unsupported process executable");
 
@@ -240,7 +247,9 @@ private:
             L"WINDOWS_CHAOS_SERVICE_PROBE", serviceFlag, _countof(serviceFlag)) == 1 && serviceFlag[0] == L'1';
         if (serviceProbe && rules.size() != 1)
             throw std::runtime_error("service probe requires one rule");
-        deferMetadata = externalSample || serviceProbe;
+        deferMetadata = externalSample || serviceProbe || coreFileProbe;
+        if (coreFileProbe && (rules.size() != 1 || rules[0].at("fault") != "io-error-before-write"))
+            throw std::runtime_error("CoreCLR probe requires one file IOException rule");
         ATL::CComPtr<IMetaDataImport> metadata;
         mdTypeDef owner{};
         PCCOR_SIGNATURE wrapperSignature{};
@@ -283,8 +292,9 @@ private:
             if (file || network)
             {
                 mdMethodDef wrapper;
-                if (!metadata || FAILED(metadata->FindMethod(owner, file ? L"WriteSelected" : L"ConnectSelected", nullptr, 0, &wrapper)) ||
-                    token != wrapper)
+                if (!coreFileProbe && (!metadata ||
+                    FAILED(metadata->FindMethod(owner, file ? L"WriteSelected" : L"ConnectSelected", nullptr, 0, &wrapper)) ||
+                    token != wrapper))
                     throw std::runtime_error("unsupported I/O probe target");
                 (file ? fileMethods : networkMethods).insert(token);
             }
@@ -324,7 +334,7 @@ private:
             plan.at("call") != (file ? "System.IO.File.WriteAllText(string,string)" :
                 network ? "System.Net.Sockets.TcpClient.Connect(string,int)" :
                 "System.Data.Common.DbCommand.ExecuteNonQuery()") ||
-            ((file || network) ? deferMetadata : delay ? !deferMetadata : plan.at("fault") != "timeout-before-send"))
+            ((file || network) ? (deferMetadata && !coreFileProbe) : delay ? !deferMetadata : plan.at("fault") != "timeout-before-send"))
             throw std::runtime_error("unsupported plan fields or values");
 
         const auto limit = plan.at("maxFirings");
@@ -473,6 +483,13 @@ private:
                     nullptr, nullptr, nullptr, nullptr);
                 if (FAILED(result)) return result;
                 if (owner != program || !IsMdStatic(flags)) return E_FAIL;
+                if (coreFileProbe)
+                {
+                    mdMethodDef expectedMethod;
+                    result = import->FindMethod(program, L"WriteSelected", nullptr, 0, &expectedMethod);
+                    if (FAILED(result)) return result;
+                    if (target != expectedMethod) return E_FAIL;
+                }
             }
             result = import->FindMethod(program, file ? L"WriteWithFault" : network ? L"ConnectWithFault" : L"FailBeforeSend", nullptr, 0, &helper);
         }
@@ -524,6 +541,7 @@ private:
 
     std::wstring targetName;
     bool externalSample = false;
+    bool coreFileProbe = false;
     bool deferMetadata = false;
     std::map<mdMethodDef, DWORD> plannedOffsets;
     std::set<mdMethodDef> fileMethods;

@@ -303,8 +303,12 @@ static CSharpCompilation LoadFixture(string sourcePath, string referenceDirector
     using var input = File.OpenRead(sourcePath);
     var source = SourceText.From(input, checksumAlgorithm: SourceHashAlgorithm.Sha256);
     var tree = CSharpSyntaxTree.ParseText(source, path: sourcePath);
-    var references = new[] { "mscorlib.dll", "System.dll", "System.Core.dll", "System.Data.dll", "System.ServiceProcess.dll" }
-        .Select(name => MetadataReference.CreateFromFile(Path.Combine(referenceDirectory, name)));
+    var coreReferences = Path.Combine(referenceDirectory, "System.Runtime.dll");
+    var referencePaths = File.Exists(coreReferences)
+        ? Directory.GetFiles(referenceDirectory, "*.dll")
+        : new[] { "mscorlib.dll", "System.dll", "System.Core.dll", "System.Data.dll", "System.ServiceProcess.dll" }
+            .Select(name => Path.Combine(referenceDirectory, name)).ToArray();
+    var references = referencePaths.Select(path => MetadataReference.CreateFromFile(path));
     return CSharpCompilation.Create("SqlTarget", [tree], references,
         new CSharpCompilationOptions(OutputKind.ConsoleApplication));
 }
