@@ -1,2 +1,4 @@
 **/bin/
 **/obj/
+.tools/
+poc/PlanDrivenInjection/artifacts/

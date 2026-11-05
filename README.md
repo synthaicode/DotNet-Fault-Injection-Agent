@@ -1,6 +1,10 @@
 # Windows Chaos Agent
 
-.NET Frameworkで動くWindowsサービスを対象に、指定した処理で障害を起こし、例外処理や復旧動作を評価するためのツールです。現在は設計段階です。
+[計画から指定する CoreCLR 呼び出し注入](poc/PlanDrivenInjection/README.md)を追加しました。
+対象と呼び出し箇所をソース・PDB・DLLで照合し、条件・障害・発火上限を version 3 の
+計画で指定します。Linux x64 / .NET 8 の検証範囲と実行手順はリンク先に記載しています。
+
+.NET Frameworkで動くWindowsサービスを対象に、指定した処理で障害を起こし、例外処理や復旧動作を評価するためのツールです。設計と検証用PoCを公開しています。
 
 ## 目的と制約
 

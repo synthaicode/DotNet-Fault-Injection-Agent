@@ -9,6 +9,9 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
+if (args.Length > 0 && args[0] == "v3")
+    return WindowsChaosAgent.PlanDrivenPlanner.Run(args.Skip(1).ToArray());
+
 try
 {
     if (args.Length is < 4 or > 5)

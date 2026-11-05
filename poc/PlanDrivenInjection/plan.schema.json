@@ -1,0 +1,198 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "ruleId",
+    "target",
+    "site",
+    "conditions",
+    "fault",
+    "maxFirings"
+  ],
+  "properties": {
+    "version": {
+      "const": 3
+    },
+    "ruleId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "mvid"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "description": "Absolute deployment path, at most 4096 UTF-8 bytes."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "mvid": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$"
+        }
+      }
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "methodToken",
+        "ilOffset",
+        "memberToken",
+        "opcode",
+        "memberName"
+      ],
+      "properties": {
+        "methodToken": {
+          "type": "integer",
+          "minimum": 100663297,
+          "maximum": 117440511
+        },
+        "ilOffset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "memberToken": {
+          "type": "integer",
+          "minimum": 167772161,
+          "maximum": 184549375
+        },
+        "opcode": {
+          "enum": [
+            "call",
+            "callvirt"
+          ]
+        },
+        "memberName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    },
+    "conditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "startAtInvocation"
+      ],
+      "properties": {
+        "environment": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "At most 256 UTF-8 bytes; NUL is rejected."
+          }
+        },
+        "startAtInvocation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      }
+    },
+    "fault": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "exceptionType",
+        "message",
+        "delayMs"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "throw",
+            "delay"
+          ]
+        },
+        "exceptionType": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "At most 1024 UTF-8 bytes."
+        },
+        "delayMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "throw"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "exceptionType": {
+                "enum": [
+                  "System.InvalidOperationException",
+                  "System.TimeoutException",
+                  "System.IO.IOException"
+                ]
+              },
+              "delayMs": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "delay"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "exceptionType": {
+                "const": ""
+              },
+              "message": {
+                "const": ""
+              },
+              "delayMs": {
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "maxFirings": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plan-driven CoreCLR injection v3"
+}
