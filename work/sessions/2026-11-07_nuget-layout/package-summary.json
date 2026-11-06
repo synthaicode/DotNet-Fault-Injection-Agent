@@ -1,0 +1,10 @@
+{
+  "PackageId": "DotNetFaultInjectionAgent.Tool",
+  "Version": "0.1.0-preview.4",
+  "Sha256": "778D22C4B2DEE25585B600D2CEA450159775178BD7CE1C4BE0982C0B1E68FB15",
+  "ContentVerified": true,
+  "CleanInstall": true,
+  "Capabilities": true,
+  "PlanCreated": true,
+  "PlanVerified": true
+}

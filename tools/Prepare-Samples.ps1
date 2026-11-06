@@ -3,14 +3,17 @@
 param(
     [string] $OrderProject,
     [string] $OrderBinary,
+    [string] $ToolDirectory,
     [switch] $Force
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $samples = Join-Path $root 'samples'
-$tool = Join-Path $root '.tools/dotnet-fault-injection.exe'
-$windowsRuntime = Join-Path $root 'poc/injection/ProfilerRewrite/bin'
-$v3 = Join-Path $root 'poc/scenarios/PlanDrivenInjection'
+if (-not $ToolDirectory) { $ToolDirectory = Join-Path $root '.tools' }
+$ToolDirectory = (Resolve-Path -LiteralPath $ToolDirectory).ProviderPath
+$tool = Join-Path $ToolDirectory 'dotnet-fault-injection.exe'
+$windowsRuntime = Join-Path $root 'src/Native/Windows/bin'
+$v3 = Join-Path $root 'tests/PlanDrivenInjection'
 if (-not (Test-Path -LiteralPath $tool)) { throw 'Install DotNetFaultInjectionAgent.Tool into .tools before preparing samples.' }
 if ([bool]$OrderProject -ne [bool]$OrderBinary) { throw 'Supply both OrderProject and OrderBinary.' }
 foreach ($file in @('Rewrite.dll', 'Rewrite.xml', 'MicrosoftInstrumentationEngine_x64.dll')) {
@@ -23,16 +26,16 @@ $pack = Get-ChildItem (Join-Path $dotnetRoot 'packs/Microsoft.NETCore.App.Ref') 
 if (-not $pack) { throw '.NET 10 reference assemblies are required.' }
 $net10 = Join-Path $pack.FullName 'ref/net10.0'
 foreach ($project in @('CoreFileTarget', 'SqlTarget', 'ProfilerTarget', 'SyncService')) {
-    dotnet build (Join-Path $root "poc/targets/$project") -c Release --nologo -v quiet
+    dotnet build (Join-Path $root "tests/Fixtures/$project") -c Release --nologo -v quiet
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $project" }
 }
-dotnet build (Join-Path $root 'poc/scenarios/OrderAgentProbe/Host') -c Release --nologo -v quiet
+dotnet build (Join-Path $root 'tests/OrderAgentProbe/Host') -c Release --nologo -v quiet
 if ($LASTEXITCODE -ne 0) { throw 'Order host build failed.' }
-dotnet build (Join-Path $v3 'Planner') -c Release --nologo -v quiet
+dotnet build (Join-Path $root 'src/Planner') -c Release --nologo -v quiet
 if ($LASTEXITCODE -ne 0) { throw 'Planner build failed.' }
 dotnet publish (Join-Path $v3 'Probe') -c Release -o (Join-Path $v3 'Probe/bin/publish') --nologo -v quiet
 if ($LASTEXITCODE -ne 0) { throw 'Probe publish failed.' }
-dotnet build (Join-Path $v3 'Runtime') -c Release --nologo -v quiet
+dotnet build (Join-Path $root 'src/Runtime') -c Release --nologo -v quiet
 if ($LASTEXITCODE -ne 0) { throw 'Runtime build failed.' }
 
 function New-SampleLayout([string] $Name, [string] $Output, [string] $Source, [string] $Kind = 'WindowsPlan') {
@@ -62,10 +65,10 @@ function New-SampleLayout([string] $Name, [string] $Output, [string] $Source, [s
     # The planning tool is distributed as a complete tool installation, not only its shim.
     if ($Kind -eq 'WindowsPlan') {
         Copy-Item -LiteralPath $tool -Destination (Join-Path $directory 'tools')
-        Copy-Item -LiteralPath (Join-Path $root '.tools/.store') -Destination (Join-Path $directory 'tools') -Recurse -Force
+        Copy-Item -LiteralPath (Join-Path $ToolDirectory '.store') -Destination (Join-Path $directory 'tools') -Recurse -Force
     }
     if ($Kind -in @('WindowsPlan','WindowsFixed')) {
-        Copy-Item -LiteralPath (Join-Path $root 'Invoke-FaultInjection.ps1') -Destination (Join-Path $directory 'tools')
+        Copy-Item -LiteralPath (Join-Path $root 'tools/Invoke-FaultInjection.ps1') -Destination (Join-Path $directory 'tools')
         foreach ($file in @('Rewrite.dll', 'Rewrite.xml', 'MicrosoftInstrumentationEngine_x64.dll')) {
             $from = Join-Path $windowsRuntime $file
             $to = Join-Path $directory "tools/runtime/$file"
@@ -94,19 +97,19 @@ function Save-Plan($Directory, $Plan, $Source, $Binary, $References) {
     & $tool verify $Source $Binary $References $path
     if ($LASTEXITCODE -ne 0) { throw "Generated plan did not verify: $Directory" }
 }
-$coreSource = Join-Path $root 'poc/targets/CoreFileTarget/Program.cs'
-$directory = New-SampleLayout 'CoreFileTarget' (Join-Path $root 'poc/targets/CoreFileTarget/bin/Release/net10.0') $coreSource
+$coreSource = Join-Path $root 'tests/Fixtures/CoreFileTarget/Program.cs'
+$directory = New-SampleLayout 'CoreFileTarget' (Join-Path $root 'tests/Fixtures/CoreFileTarget/bin/Release/net10.0') $coreSource
 $binary = Join-Path $directory 'target/CoreFileTarget.dll'
 $plan = New-LegacyPlan $directory $coreSource $binary $net10 'Program.WriteSelected(string, string)'
 $plan.path = Join-Path $directory 'target/write-probe.txt'
 Save-Plan $directory $plan $coreSource $binary $net10
-$sqlSource = Join-Path $root 'poc/targets/SqlTarget/Program.cs'
+$sqlSource = Join-Path $root 'tests/Fixtures/SqlTarget/Program.cs'
 foreach ($entry in @(
     @('SqlTimeout', 'Program.Selected(System.Data.SqlClient.SqlCommand)'),
     @('FileWriteFailure', 'Program.WriteSelected(string, string)'),
     @('TcpConnectionRefused', 'Program.ConnectSelected(System.Net.Sockets.TcpClient, string, int)')
 )) {
-    $directory = New-SampleLayout $entry[0] (Join-Path $root 'poc/targets/SqlTarget/bin/Release/net48') $sqlSource
+    $directory = New-SampleLayout $entry[0] (Join-Path $root 'tests/Fixtures/SqlTarget/bin/Release/net48') $sqlSource
     $binary = Join-Path $directory 'target/SqlTarget.exe'
     $plan = New-LegacyPlan $directory $sqlSource $binary $net48 $entry[1]
     if ($plan.ContainsKey('path')) { $plan.path = Join-Path $directory 'target/write-probe.txt' }
@@ -114,17 +117,17 @@ foreach ($entry in @(
 }
 foreach ($entry in @(@('ProfilerReturnValue','ProfilerTarget'), @('SharedFlags','SyncService'))) {
     $kind = if ($entry[0] -eq 'SharedFlags') { 'Observation' } else { 'WindowsFixed' }
-    $null = New-SampleLayout $entry[0] (Join-Path $root "poc/targets/$($entry[1])/bin/Release/net48") (Join-Path $root "poc/targets/$($entry[1])/Program.cs") $kind
+    $null = New-SampleLayout $entry[0] (Join-Path $root "tests/Fixtures/$($entry[1])/bin/Release/net48") (Join-Path $root "tests/Fixtures/$($entry[1])/Program.cs") $kind
 }
 $directory = New-SampleLayout 'PlanDrivenInjection' (Join-Path $v3 'Probe/bin/publish') (Join-Path $v3 'Probe/Program.cs') 'LinuxPlan'
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Invoke-LinuxSample.ps1') -Destination (Join-Path $directory 'tools')
 foreach ($file in @('libDotNetFaultInjectionAgent.so','libInstrumentationEngine.so','Rewrite.xml')) {
-    Copy-Item -LiteralPath (Join-Path $v3 "Native/bin/$file") -Destination (Join-Path $directory 'tools/runtime')
+    Copy-Item -LiteralPath (Join-Path $root "src/Native/Linux/bin/$file") -Destination (Join-Path $directory 'tools/runtime')
 }
-Copy-Item -LiteralPath (Join-Path $v3 'Runtime/bin/Release/net8.0/DotNetFaultInjectionAgent.Runtime.dll') -Destination (Join-Path $directory 'target')
-Copy-Item -LiteralPath (Join-Path $v3 'Runtime/bin/Release/net8.0/DotNetFaultInjectionAgent.Runtime.deps.json') -Destination (Join-Path $directory 'tools/runtime')
+Copy-Item -LiteralPath (Join-Path $root 'src/Runtime/bin/Release/net8.0/DotNetFaultInjectionAgent.Runtime.dll') -Destination (Join-Path $directory 'target')
+Copy-Item -LiteralPath (Join-Path $root 'src/Runtime/bin/Release/net8.0/DotNetFaultInjectionAgent.Runtime.deps.json') -Destination (Join-Path $directory 'tools/runtime')
 New-Item -ItemType Directory -Force (Join-Path $directory 'tools/planner') | Out-Null
-Get-ChildItem (Join-Path $v3 'Planner/bin/Release/net8.0') -File | Copy-Item -Destination (Join-Path $directory 'tools/planner')
+Get-ChildItem (Join-Path $root 'src/Planner/bin/Release/net8.0') -File | Copy-Item -Destination (Join-Path $directory 'tools/planner')
 $source = Join-Path $v3 'Probe/Program.cs'
 $line = (Select-String -LiteralPath $source -SimpleMatch 'File.WriteAllText(path, "selected")').LineNumber
 $temporary = Join-Path $directory ('.plan-'+[guid]::NewGuid()+'.json')
@@ -143,7 +146,7 @@ if ($OrderProject) {
     $OrderProject = (Resolve-Path -LiteralPath $OrderProject).Path
     $OrderBinary = (Resolve-Path -LiteralPath $OrderBinary).Path
     foreach ($name in @('OrderTimeout','OrderDelay')) {
-        $directory = New-SampleLayout $name (Join-Path $root 'poc/scenarios/OrderAgentProbe/Host/bin/Release/net48') (Join-Path $root 'poc/scenarios/OrderAgentProbe/Host/Program.cs')
+        $directory = New-SampleLayout $name (Join-Path $root 'tests/OrderAgentProbe/Host/bin/Release/net48') (Join-Path $root 'tests/OrderAgentProbe/Host/Program.cs')
         Copy-Item -LiteralPath $OrderBinary -Destination (Join-Path $directory 'target')
         Copy-Item -LiteralPath ([IO.Path]::ChangeExtension($OrderBinary,'.pdb')) -Destination (Join-Path $directory 'target')
         Copy-Item -LiteralPath ([IO.Path]::ChangeExtension($OrderBinary,'.pdb')) -Destination (Join-Path $directory 'reference')

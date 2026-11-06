@@ -23,14 +23,15 @@
 計画作成ツールはリポジトリのルートで次のように作成・インストールします。
 
 ```powershell
-dotnet pack poc/tools/SourceMap -c Release -o work/packages
-dotnet tool install DotNetFaultInjectionAgent.Tool --version 0.1.0-preview.4 --tool-path .tools --add-source work/packages
+dotnet pack src/Tool -c Release -o artifacts/packages
+dotnet tool install DotNetFaultInjectionAgent.Tool --version 0.1.0-preview.4 --tool-path .tools --add-source artifacts/packages
 .tools/dotnet-fault-injection.exe v3 capabilities
 ```
 
 この手順はローカルで作成したパッケージを使います。NuGet.orgへの公開を前提にしません。
-エンジンと拡張のビルド方法は [Windows](../poc/injection/ProfilerRewrite/DEVELOPMENT.md) と
-[Linux](../poc/scenarios/PlanDrivenInjection/DEVELOPMENT.md) の開発用文書にあります。
+別のディレクトリへインストールした場合は、`Prepare-Samples.ps1 -ToolDirectory <ツール配置先>` で指定できます。
+エンジンと拡張のビルド方法は [Windows](../src/Native/Windows/DEVELOPMENT.md) と
+[Linux](../tests/PlanDrivenInjection/DEVELOPMENT.md) の開発用文書にあります。
 
 既存の計画を置き換える場合だけ `-Force` を付けます。
 このスイッチは、既に編集したサンプルの計画や生成物を置き換えます。
@@ -70,7 +71,7 @@ $plan = Get-Content -Raw ./plan.json | ConvertFrom-Json
 試験後に同じ計画で再実行すると、既存ファイルを理由に対象が開始を拒否します。
 
 SharedFlagsは注入ツールを使わず、`target/SyncService.exe` に `--console` を渡して実行します。
-Windowsサービスへの登録手順は [開発用の説明](../poc/targets/SyncService/DEVELOPMENT.md) にあります。
+Windowsサービスへの登録手順は [開発用の説明](../tests/Fixtures/SyncService/DEVELOPMENT.md) にあります。
 
 ## 注文投入サンプルの実行
 

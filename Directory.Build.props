@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Only explicitly selected distribution projects produce NuGet packages. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

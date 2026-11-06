@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DotNetFaultInjectionAgent.Tool</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <IsPackable>true</IsPackable>
+    <PackageId>DotNetFaultInjectionAgent.Tool</PackageId>
+    <ToolCommandName>dotnet-fault-injection</ToolCommandName>
+    <Version>0.1.0-preview.4</Version>
+    <Description>DotNet Fault Injection Agent source analysis and injection plan verification.</Description>
+    <Authors>synthaicode</Authors>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/synthaicode/DotNet-Fault-Injection-Agent</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/synthaicode/DotNet-Fault-Injection-Agent</PackageProjectUrl>
+    <PackageTags>dotnet;fault-injection;testing</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="../../docs/packaging/nuget-readme.md" Pack="true" PackagePath="/README.md" />
+    <None Include="../../schemas/injection-plan.v3.schema.json" Pack="true" PackagePath="schemas/" />
+    <ProjectReference Include="../Planner/Planner.csproj" />
+    <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll" />
+    <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll" />
+  </ItemGroup>
+</Project>
