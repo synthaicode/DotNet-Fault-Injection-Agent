@@ -51,7 +51,9 @@ foreach ($helpArguments in @(@(), @('--help'))) {
 }
 & $command guide unexpected 2>$null
 if ($LASTEXITCODE -ne 1) { throw 'Invalid guide arguments were not rejected.' }
-$capabilities = & $command v3 capabilities
+$targets = & $command capabilities
+if ($LASTEXITCODE -ne 0 -or @((($targets -join "`n") | ConvertFrom-Json).targets).Count -ne 3) { throw "Target capabilities failed." }
+$capabilities = & $command dotnet capabilities
 if ($LASTEXITCODE -ne 0 -or ($capabilities | ConvertFrom-Json).planVersion -ne 3) { throw 'Installed CLI failed capabilities.' }
 $probe = Join-Path $root 'tests/PlanDrivenInjection/Probe'
 & dotnet build $probe -c Release --nologo
@@ -60,9 +62,9 @@ $source = Join-Path $probe 'Program.cs'
 $binary = Join-Path $probe 'bin/Release/net8.0/Probe.dll'
 $line = (Select-String -LiteralPath $source -SimpleMatch 'File.WriteAllText(path, "selected")').LineNumber
 $plan = Join-Path $output 'plan.json'
-& $command v3 plan $binary $source $line $plan
+& $command dotnet plan $binary $source $line $plan
 if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed to create a plan.' }
-& $command v3 verify $binary $source $line $plan
+& $command dotnet verify $binary $source $line $plan
 if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed plan verification.' }
 $summary = [pscustomobject]@{ PackageId=$id; Version=$version; Sha256=(Get-FileHash $packagePath).Hash;
     ContentVerified=$true; CleanInstall=$true; GuideVerified=$true; Capabilities=$true; PlanCreated=$true; PlanVerified=$true; ToolDirectory=$toolPath }

@@ -13,8 +13,9 @@ if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
 {
     Console.WriteLine("DotNet Fault Injection Agent — injection planning CLI");
     Console.WriteLine("Start here: dotnet-fault-injection guide");
-    Console.WriteLine("Read the guide before selecting a plan version or generating a plan.");
-    Console.WriteLine("Commands: guide | v3 capabilities | v3 list/plan/verify | list/recommend/plan/verify");
+    Console.WriteLine("Identify the target runtime and OS before generating a plan.");
+    Console.WriteLine("Commands: guide | capabilities | dotnet list/plan/verify | windows-fixture list/recommend/plan/verify");
+    Console.WriteLine("dotnet: generic Linux x64/.NET 8 injection; windows-fixture: dedicated Windows Framework/CoreCLR samples.");
     return 0;
 }
 if (args[0] == "guide")
@@ -36,7 +37,21 @@ if (args[0] == "guide")
     return 0;
 }
 
-if (args.Length > 0 && args[0] == "v3")
+if (args[0] == "capabilities")
+{
+    if (args.Length != 1) { Console.Error.WriteLine("Usage: dotnet-fault-injection capabilities"); return 1; }
+    Console.WriteLine("""
+        {"targets":[{"command":"dotnet","runtime":".NET 8","os":"Linux x64","scope":"generic external-call injection","launch":"dotnet target.dll","profilerEnvironment":"CORECLR_*","additionalManagedRuntime":true},{"command":"windows-fixture","runtime":".NET Framework 4.8","os":"Windows x64","scope":"dedicated fixtures and order host","launch":"target.exe","profilerEnvironment":"COR_*"},{"command":"windows-fixture","runtime":".NET 10","os":"Windows x64","scope":"dedicated CoreFileTarget fixture","launch":"apphost.exe; verify managed DLL","profilerEnvironment":"CORECLR_*"}]}
+        """);
+    return 0;
+}
+if (args[0] == "windows-fixture")
+{
+    args = args.Skip(1).ToArray();
+    if (args.Length == 0) { Console.Error.WriteLine("Usage: dotnet-fault-injection windows-fixture list|recommend|plan|verify <source|project> <binary> <references> [selection] [plan.json]"); return 1; }
+}
+
+if (args.Length > 0 && args[0] is "dotnet" or "v3")
     return DotNetFaultInjectionAgent.PlanDrivenPlanner.Run(args.Skip(1).ToArray());
 
 // Keep the packaged command's verb-first form alongside SourceMap's positional form.

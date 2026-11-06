@@ -34,8 +34,8 @@ Conditions: [environment values, file/connection conditions supported by this pl
 Firing limit: [count]
 Output plan: [absolute JSON path]
 
-Inspect the relevant processing and exception-handling paths. Check supported capabilities
-before choosing a plan version. Identify the call site with the CLI and generate the plan
+Inspect the relevant processing and exception-handling paths. Check supported target runtimes and operating systems
+before choosing an execution route. Identify the call site with the CLI and generate the plan
 from the actual binary, matching PDB and source. Do not invent hashes, MVIDs, tokens or IL offsets.
 Set only supported conditions and faults, then verify the final JSON with the CLI.
 If a call site is ambiguous or a required value is unknown, explain what is needed.
@@ -44,10 +44,44 @@ expected observations and verification output. Distinguish plan verification fro
 executed injection test. Use this same JSON for execution.
 ```
 
+
+## Choose by target runtime and operating system
+
+The CLI itself requires .NET 10. That requirement is separate from the runtime of the application being tested.
+
+Run `dotnet-fault-injection capabilities` to see the supported target combinations. Choose the target runtime and OS, not a JSON-format generation.
+
+| Application | Support and planning command | Startup and deployment |
+| --- | --- | --- |
+| .NET Framework 4.8 / Windows x64 | Dedicated fixtures and order host: `windows-fixture list/plan/verify` | Launch the EXE with COR_* profiler settings and the Windows engine/extension/XML. Some fixtures contain built-in fault helpers. |
+| .NET 10 / Windows x64 | Dedicated CoreFileTarget only: `windows-fixture list/plan/verify` | Launch the apphost EXE with CORECLR_* settings; bind the plan to its managed DLL, not the apphost. This does not establish generic Windows .NET support. |
+| .NET 8 / Linux x64 | Generic external-call injection: `dotnet list/plan/verify` | Launch `dotnet target.dll` with CORECLR_* settings, Linux engine/extension/XML, the managed injection Runtime beside the application, and DOTNET_ADDITIONAL_DEPS pointing to its deps.json. |
+
+On Windows, the sample launcher detects the adjacent runtimeconfig.json to select COR_* or CORECLR_* settings. The Windows launcher accepts dedicated fixture plans; it cannot execute the generic Linux plan simply by changing a prefix. Windows services require service-specific startup configuration rather than a normal process launch.
+
+For generic .NET/Linux planning:
+
+```text
+dotnet-fault-injection capabilities
+dotnet-fault-injection dotnet list target.dll Program.cs 22
+dotnet-fault-injection dotnet plan target.dll Program.cs 22 plan.json
+dotnet-fault-injection dotnet verify target.dll Program.cs 22 plan.json
+```
+
+For dedicated Windows fixtures, supply source/project, the actual managed binary and the matching reference-assembly directory:
+
+```text
+dotnet-fault-injection windows-fixture list <source|project> <binary> <references>
+dotnet-fault-injection windows-fixture plan <source|project> <binary> <references> <selection> <plan.json>
+dotnet-fault-injection windows-fixture verify <source|project> <binary> <references> <plan.json>
+```
+
+Plan-format numbers are internal compatibility details. Existing `v3` and unprefixed fixture commands remain available for existing scripts. Neither route makes unsupported runtime/OS combinations supported.
+
 ## Planning workflow
 
 1. Inspect the application's normal path, exception handling, recovery and externally visible state. Treat a static finding as a hypothesis to test.
-2. Check capabilities and choose a supported runtime/plan version. Windows dedicated PoCs use version 1/2; generic Linux x64 / .NET 8 injection uses version 3.
+2. Check capabilities and select the application runtime and OS using the table below.
 3. List candidate calls with the CLI. Resolve ambiguous candidates before generating a plan.
 4. Generate a plan from the actual target binary, matching source and Portable PDB. Keep generated identity and call-site fields unchanged.
 5. Set the requested rule ID, deployment path, supported conditions, fault and firing limit. Verify the final saved JSON again.
@@ -56,10 +90,10 @@ executed injection test. Use this same JSON for execution.
 For version 3, use these commands with real paths and the selected source line:
 
 ```text
-dotnet-fault-injection v3 capabilities
-dotnet-fault-injection v3 list target.dll Program.cs 22
-dotnet-fault-injection v3 plan target.dll Program.cs 22 plan.json
-dotnet-fault-injection v3 verify target.dll Program.cs 22 plan.json
+dotnet-fault-injection capabilities
+dotnet-fault-injection dotnet list target.dll Program.cs 22
+dotnet-fault-injection dotnet plan target.dll Program.cs 22 plan.json
+dotnet-fault-injection dotnet verify target.dll Program.cs 22 plan.json
 ```
 
 Version 3 supports environment equality, starting invocation and an atomic firing budget. Faults are supported synchronous exceptions or a bounded synchronous delay before a selected external call. It does not support argument/business-object matching, arbitrary exception construction or faulted Task injection. Do not translate a requested unsupported condition into an apparently equivalent supported condition without explaining the difference.
