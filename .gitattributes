@@ -1,2 +1,2 @@
-poc/PlanDrivenInjection/Native/build.sh text eol=lf
-poc/PlanDrivenInjection/Native/Dockerfile text eol=lf
+**/build.sh text eol=lf
+**/Dockerfile text eol=lf
