@@ -2,6 +2,7 @@
 import copy
 import json
 import pathlib
+import os
 import shutil
 import subprocess
 import sys
@@ -9,7 +10,8 @@ import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
-NATIVE = REPO / "src/Native/Linux/bin"
+EXPORTED = os.environ.get("FAULT_RUNTIME_DIRECTORY")
+NATIVE = pathlib.Path(EXPORTED).resolve() if EXPORTED else REPO / "src/Native/Linux/bin"
 IMAGE = sys.argv[1] if len(sys.argv) > 1 else "dotnet-fault-injection-runtime:local"
 OUTPUT = ROOT / "artifacts" / ("verify-" + uuid.uuid4().hex)
 OUTPUT.mkdir(parents=True)
@@ -27,13 +29,17 @@ def command(args, expected=0):
     return result
 
 
-for project in (REPO / "src/Planner/Planner.csproj", REPO / "src/Runtime/Runtime.csproj", ROOT / "Probe/Probe.csproj"):
+projects = [REPO / "src/Planner/Planner.csproj", ROOT / "Probe/Probe.csproj"]
+if not EXPORTED:
+    projects.append(REPO / "src/Runtime/Runtime.csproj")
+for project in projects:
     command(["dotnet", "build", str(project), "-c", "Release", "--nologo"])
 command(["dotnet", "publish", str(ROOT / "Probe/Probe.csproj"), "-c", "Release",
          "--no-restore", "-o", str(ASSEMBLY.parent)])
-runtime = REPO / "src/Runtime/bin/Release/net8.0"
+runtime = NATIVE if EXPORTED else REPO / "src/Runtime/bin/Release/net8.0"
 shutil.copy2(runtime / "DotNetFaultInjectionAgent.Runtime.dll", ASSEMBLY.parent)
-shutil.copy2(runtime / "DotNetFaultInjectionAgent.Runtime.deps.json", NATIVE)
+if not EXPORTED:
+    shutil.copy2(runtime / "DotNetFaultInjectionAgent.Runtime.deps.json", NATIVE)
 deps = json.loads((ASSEMBLY.parent / "Probe.deps.json").read_text(encoding="utf-8"))
 assert not any(name.startswith("DotNetFaultInjectionAgent.Runtime/") for name in deps["libraries"])
 base_file = OUTPUT / "base.json"

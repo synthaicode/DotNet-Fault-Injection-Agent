@@ -27,7 +27,7 @@ For the .NET CoreFileTarget fixture, provide its apphost EXE to Target and bind 
 
 The Windows payload supports the existing dedicated Framework/CoreCLR fixtures and order host; bundling does not add support for arbitrary application binaries. It uses an unsigned extension with signature-validation bypass limited to the test child process. Services require their own service configuration; exporting does not register a service.
 
-Only win-x64 execution assets are bundled in this release candidate. Generic Linux/.NET planning remains supported, but Linux execution assets are not included in this payload and use the separate developer deployment instructions.
+Both win-x64 and linux-x64 execution payloads are bundled. Their launchers and platform requirements differ; see the Linux section below.
 
 Use the AI assistant in your own development environment to inspect the application and run `dotnet-fault-injection`. The CLI performs binary/source/PDB checks; the AI selects a supported test that answers your question. The tool does not contain an embedded AI service.
 
@@ -133,4 +133,25 @@ Return one verified JSON together with the target identity, call site, condition
 
 Plan verification checks the binding and format; it does not show that injection fired or that the application recovered correctly. During execution, distinguish plan acceptance, IL rewriting and actual firing. Check application logs, notifications, retry behavior and database/file state separately. A pre-send exception does not simulate losing a response after a committed database write.
 
-See the [sample matrix](../../samples/README.md) and [command and format details](DEVELOPMENT.md). The Windows engine/extension/launcher can be exported from the installed CLI as described below. Generic Linux execution uses a separate deployment.
+See the [sample matrix](../../samples/README.md) and [command and format details](DEVELOPMENT.md). The Windows engine/extension/launcher can be exported from the installed CLI as described below. The package also exports the Linux payload as described below.
+
+
+## Use the bundled Linux x64 runtime
+
+The same NuGet tool package includes both win-x64 and linux-x64 execution files. `runtime export --output <new-directory>` selects the current x64 OS; use `--rid linux-x64` or `--rid win-x64` to export explicitly, including from another OS. Existing directories are rejected and each payload's checksums are verified.
+
+On Linux, after installing the test package from the configured GitHub Packages feed:
+
+```bash
+dotnet-fault-injection runtime list
+dotnet-fault-injection runtime export --rid linux-x64 --output ./fault-runtime
+bash ./fault-runtime/Invoke-FaultInjection.sh --target /absolute/app/target.dll --plan /absolute/plan.json -- application-arguments
+```
+
+Create and verify the plan with `dotnet-fault-injection dotnet plan` and `dotnet verify` against the actual target DLL, matching source and Portable PDB before running. The target.path in the plan must be the target's absolute path in the execution environment.
+
+The export contains libInstrumentationEngine.so, libDotNetFaultInjectionAgent.so, Rewrite.xml, DotNetFaultInjectionAgent.Runtime.dll/deps.json, the Bash launcher, dependency reports, a manifest and license notices. Users do not build these components.
+
+Requirements: Linux x64 with glibc (not Alpine/musl), OpenSSL 3/libcrypto.so.3, libstdc++, the target .NET 8 runtime, and .NET 10 for the CLI. The native payload is built in Debian 12; execution is verified in a Debian 12 .NET 8 container and on the Ubuntu 24.04 Actions runner. This does not establish compatibility with every Linux distribution, older glibc, ARM64 or macOS.
+
+The launcher configures CORECLR_* and DOTNET_ADDITIONAL_DEPS for the target child. It places the packaged managed injection DLL beside the target if absent, requiring write access to that directory; it keeps this DLL for subsequent runs. It accepts an identical existing DLL and refuses a different one rather than replacing it. The target DLL itself is not rebuilt or modified. Use a new process for a changed plan. Match acceptance, rewriting, chaos.fired and application/external-state observations separately.

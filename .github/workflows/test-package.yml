@@ -9,7 +9,29 @@ permissions:
   packages: write
 
 jobs:
+  linux-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/CLRInstrumentationEngine
+          ref: 0055c6fce2fe16770f5908ef14cfd7f8a42c2fab
+          path: artifacts/engine-source
+          persist-credentials: false
+      - name: Build Linux runtime from source
+        run: |
+          docker build -t fault-linux-build -f src/Native/Linux/Build/Dockerfile src/Native/Linux/Build
+          docker run --rm --mount "type=bind,source=$PWD,target=/repo" fault-linux-build bash /repo/tools/Build-LinuxRuntime.sh /repo/artifacts/engine-source
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-runtime
+          path: artifacts/runtime/linux-x64/*
   windows-package:
+    needs: linux-runtime
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     runs-on: windows-2022
     timeout-minutes: 40
     defaults:
@@ -39,10 +61,16 @@ jobs:
             Where-Object { Test-Path (Join-Path $_ 'cor.h') } | Select-Object -First 1
           if (-not $headers) { throw '.NET Framework SDK native headers are required.' }
           ./tools/Build-WindowsRuntime.ps1 -EngineSource ./artifacts/engine-source -ClrHeaders $headers -JsonHeaders ./artifacts/headers
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-runtime
+          path: artifacts/runtime/linux-x64
       - name: Pack and verify locally
+        id: version
         run: |
           $version = "0.1.0-github.${env:GITHUB_RUN_ID}.${env:GITHUB_RUN_ATTEMPT}"
           "TEST_PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+          "version=$version" >> $env:GITHUB_OUTPUT
           ./tools/Pack.ps1 -Version $version
           ./tools/Test-Package.ps1 -Package "./artifacts/packages/DotNetFaultInjectionAgent.Tool.$version.nupkg"
       - name: Publish to GitHub Packages
@@ -64,5 +92,46 @@ jobs:
             artifacts/packages/*.nupkg
             artifacts/package-tests/*/summary.json
             artifacts/package-tests/*/*-result.json
-            artifacts/runtime/win-x64/manifest.json
+            artifacts/runtime/*/manifest.json
           if-no-files-found: warn
+
+  linux-consumer:
+    needs: windows-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-verification
+          path: artifacts/github-published
+      - name: Fetch package from GitHub and execute Linux payload
+        env:
+          TEST_PACKAGE_VERSION: ${{ needs.windows-package.outputs.version }}
+          NuGetPackageSourceCredentials_packagefeed: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+        run: |
+          ./tools/Test-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl https://nuget.pkg.github.com/synthaicode/index.json
+      - name: Run independent injection suite using exported payload
+        run: |
+          $summaryPath = Get-ChildItem artifacts/package-tests -Filter summary.json -Recurse | Select-Object -First 1
+          $summary = Get-Content -Raw $summaryPath.FullName | ConvertFrom-Json
+          $env:FAULT_RUNTIME_DIRECTORY = $summary.RuntimeDirectory
+          docker build -t dotnet-fault-injection-runtime:local src/Native/Linux
+          python3 tests/PlanDrivenInjection/verify.py dotnet-fault-injection-runtime:local
+          if ($LASTEXITCODE -ne 0) { throw 'Exported Linux runtime suite failed.' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-consumer-verification
+          path: |
+            artifacts/package-tests/*/summary.json
+            artifacts/package-tests/*/linux-runtime.log
+            tests/PlanDrivenInjection/artifacts/*/summary.json

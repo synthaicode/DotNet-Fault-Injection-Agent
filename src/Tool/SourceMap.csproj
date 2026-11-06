@@ -22,6 +22,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="../../artifacts/runtime/win-x64/*" Link="runtime/win-x64/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Pack="false" />
+    <Content Include="../../artifacts/runtime/linux-x64/*" Link="runtime/linux-x64/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Pack="false" />
     <EmbeddedResource Include="AI-plan-guide.md" LogicalName="DotNetFaultInjectionAgent.AI-plan-guide.md" />
     <None Update="AI-plan-guide.md" Pack="true" PackagePath="/AI-plan-guide.md" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
@@ -33,5 +34,6 @@
   </ItemGroup>
   <Target Name="RequireWindowsRuntime" BeforeTargets="GenerateNuspec">
     <Error Condition="!Exists('$(MSBuildProjectDirectory)/../../artifacts/runtime/win-x64/manifest.json')" Text="Build and stage the Windows runtime with tools/Stage-WindowsRuntime.ps1 before packing." />
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)/../../artifacts/runtime/linux-x64/manifest.json')" Text="Build and stage the Linux runtime before packing." />
   </Target>
 </Project>

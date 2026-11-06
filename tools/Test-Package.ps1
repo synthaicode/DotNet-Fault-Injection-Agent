@@ -21,8 +21,11 @@ try {
     foreach ($file in @('Rewrite.dll','Rewrite.xml','MicrosoftInstrumentationEngine_x64.dll','Invoke-FaultInjection.ps1','manifest.json','CLRInstrumentationEngine.LICENSE.txt','CLRInstrumentationEngine.NOTICES.txt','nlohmann-json.LICENSE.txt')) {
         if ("tools/net10.0/any/runtime/win-x64/$file" -notin $names) { throw "Runtime payload missing: $file" }
     }
-    if (($names | Where-Object { $_ -notlike 'tools/net10.0/any/runtime/win-x64/*' }) -match '(^|/)(tests|samples|work)/|(^|/)(Probe|SqlTarget|CoreFileTarget|OrderAgentProbe|DotNetFaultInjectionAgent.Runtime)\.(dll|exe)$|\.so$|(^|/)Rewrite\.dll$') {
+    if (($names | Where-Object { $_ -notlike 'tools/net10.0/any/runtime/win-x64/*' -and $_ -notlike 'tools/net10.0/any/runtime/linux-x64/*' }) -match '(^|/)(tests|samples|work)/|(^|/)(Probe|SqlTarget|CoreFileTarget|OrderAgentProbe|DotNetFaultInjectionAgent.Runtime)\.(dll|exe)$|\.so$|(^|/)Rewrite\.dll$') {
         throw 'Package contains a fixture, runtime or native injection component.'
+    }
+    foreach ($file in @('libInstrumentationEngine.so','libDotNetFaultInjectionAgent.so','Rewrite.xml','DotNetFaultInjectionAgent.Runtime.dll','DotNetFaultInjectionAgent.Runtime.deps.json','Invoke-FaultInjection.sh','manifest.json','CLRInstrumentationEngine.LICENSE.txt','CLRInstrumentationEngine.NOTICES.txt','libxml2.LICENSE.txt','utfcpp.LICENSE.txt')) {
+        if ("tools/net10.0/any/runtime/linux-x64/$file" -notin $names) { throw "Linux payload missing: $file" }
     }
     $manifest = @($archive.Entries | Where-Object FullName -Like '*.nuspec')
     if ($manifest.Count -ne 1) { throw 'Expected one NuGet manifest.' }
@@ -43,14 +46,14 @@ try {
     & dotnet tool install $id --version $version --tool-path $toolPath --configfile (Join-Path $output 'NuGet.Config')
     if ($LASTEXITCODE -ne 0) { throw 'Clean tool installation failed.' }
 } finally { $env:NUGET_PACKAGES = $originalCache }
-$installedArchive = @(Get-ChildItem -LiteralPath $toolPath -Recurse -File -Filter "$id.$version.nupkg")
+$installedArchive = @(Get-ChildItem -LiteralPath $toolPath -Recurse -File -Filter "$($id.ToLowerInvariant()).$version.nupkg")
 if ($installedArchive.Count -ne 1 -or (Get-FileHash $installedArchive[0].FullName).Hash -ne (Get-FileHash $packagePath).Hash) {
     throw 'The package fetched from the selected feed differs from the tested package.'
 }
 $command = Join-Path $toolPath $(if ($IsWindows) { 'dotnet-fault-injection.exe' } else { 'dotnet-fault-injection' })
 $runtimeDirectory = Join-Path $output 'exported-runtime'
 $runtimeList = & $command runtime list
-if ($LASTEXITCODE -ne 0 -or 'win-x64' -notin ($runtimeList | ConvertFrom-Json).bundled) { throw 'Runtime discovery failed.' }
+if ($LASTEXITCODE -ne 0 -or ('win-x64' -notin ($runtimeList | ConvertFrom-Json).bundled -or 'linux-x64' -notin ($runtimeList | ConvertFrom-Json).bundled)) { throw 'Runtime discovery failed.' }
 & $command runtime export --output $runtimeDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Runtime export failed.' }
 & $command runtime export --output $runtimeDirectory 2>$null
@@ -118,6 +121,17 @@ $plan = Join-Path $output 'plan.json'
 if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed to create a plan.' }
 & $command dotnet verify $binary $source $line $plan
 if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed plan verification.' }
+if ($IsLinux) {
+    $targetHash = (Get-FileHash $binary).Hash
+    $lines = @(& bash (Join-Path $runtimeDirectory 'Invoke-FaultInjection.sh') --target $binary --plan $plan -- (Join-Path $output 'files') 12 2>&1 | ForEach-Object ToString)
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged Linux launcher failed.' }
+    $lines | Set-Content (Join-Path $output 'linux-runtime.log') -Encoding utf8
+    $rows = @($lines | Where-Object { $_ -like '{"index"*' } | ForEach-Object { $_ | ConvertFrom-Json })
+    $events = @($lines | Where-Object { $_ -like '{"event":"chaos.fired"*' })
+    if ($rows.Count -ne 12 -or @($rows | Where-Object error).Count -ne 1 -or $events.Count -ne 1 -or
+        -not ($lines -match '^plan accepted:') -or -not ($lines -match '^IL rewritten:')) { throw 'Linux runtime did not inject exactly once.' }
+    if ($targetHash -ne (Get-FileHash $binary).Hash) { throw 'Linux target binary changed.' }
+}
 $summary = [pscustomobject]@{ PackageId=$id; Version=$version; Sha256=(Get-FileHash $packagePath).Hash;
     ContentVerified=$true; CleanInstall=$true; RuntimeDirectory=$runtimeDirectory; GuideVerified=$true; Capabilities=$true; PlanCreated=$true; PlanVerified=$true; ToolDirectory=$toolPath }
 $summary | ConvertTo-Json | Set-Content (Join-Path $output 'summary.json') -Encoding utf8
