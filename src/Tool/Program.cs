@@ -9,6 +9,33 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
+if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
+{
+    Console.WriteLine("DotNet Fault Injection Agent — injection planning CLI");
+    Console.WriteLine("Start here: dotnet-fault-injection guide");
+    Console.WriteLine("Read the guide before selecting a plan version or generating a plan.");
+    Console.WriteLine("Commands: guide | v3 capabilities | v3 list/plan/verify | list/recommend/plan/verify");
+    return 0;
+}
+if (args[0] == "guide")
+{
+    if (args.Length != 1)
+    {
+        Console.Error.WriteLine("Usage: dotnet-fault-injection guide");
+        return 1;
+    }
+    using var stream = System.Reflection.Assembly.GetExecutingAssembly()
+        .GetManifestResourceStream("DotNetFaultInjectionAgent.AI-plan-guide.md");
+    if (stream is null)
+    {
+        Console.Error.WriteLine("The embedded planning guide is missing. Reinstall the tool.");
+        return 1;
+    }
+    using var reader = new StreamReader(stream);
+    Console.Write(reader.ReadToEnd());
+    return 0;
+}
+
 if (args.Length > 0 && args[0] == "v3")
     return DotNetFaultInjectionAgent.PlanDrivenPlanner.Run(args.Skip(1).ToArray());
 
