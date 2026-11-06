@@ -4,6 +4,8 @@ engine="$(realpath "${1:?Supply the pinned Engine source directory}")"
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 test "$(git -c safe.directory="$engine" -C "$engine" rev-parse HEAD)" = 0055c6fce2fe16770f5908ef14cfd7f8a42c2fab
 test -z "$(git -c safe.directory="$engine" -C "$engine" status --porcelain --untracked-files=no)"
+# The upstream build also invokes git; allow this specific bind-mounted checkout in the build container.
+git config --global --add safe.directory "$engine"
 bash "$engine/src/build.sh" x64 Release -j2
 headers="$repo/artifacts/linux-headers"
 mkdir -p "$headers/nlohmann"
