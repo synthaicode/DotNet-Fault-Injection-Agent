@@ -1,10 +1,13 @@
 **/bin/
 **/obj/
 .tools/
-poc/scenarios/PlanDrivenInjection/artifacts/
+tests/PlanDrivenInjection/artifacts/
 /samples/*/target/
 /samples/*/reference/
 /samples/*/tools/
 /samples/*/plan.json
 /samples/*/evidence/
 /work/rename-validation/
+/artifacts/
+# Retained local build outputs from earlier layouts are not repository sources.
+/poc/scenarios/PlanDrivenInjection/artifacts/

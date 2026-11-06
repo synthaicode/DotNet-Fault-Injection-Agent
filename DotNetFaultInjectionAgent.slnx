@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Planner/Planner.csproj" />
+    <Project Path="src/Runtime/Runtime.csproj" />
+  </Folder>
+  <Folder Name="/src/Tool/">
+    <Project Path="src/Tool/SourceMap.csproj" />
+  </Folder>
+</Solution>

@@ -44,7 +44,7 @@ foreach ($name in @('ProfilerReturnValue','CoreFileTarget','FileWriteFailure','T
             }
         }
     }
-    $result = & "$root/Invoke-FaultInjection.ps1" @parameters
+    $result = & "$root/tools/Invoke-FaultInjection.ps1" @parameters
     $result | ConvertTo-Json -Depth 10 | Set-Content "$evidence/$name.json" -Encoding utf8
     Assert-Result $result $firings $expected
     if ($name -in @('CoreFileTarget','FileWriteFailure') -and -not (Test-Path -LiteralPath $plan.path)) { throw 'Second file write did not succeed' }

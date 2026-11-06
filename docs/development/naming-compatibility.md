@@ -9,7 +9,7 @@
 | `WindowsChaosAgent` | `DotNetFaultInjectionAgent` |
 | `WindowsChaosAgent.Runtime.dll` / `.deps.json` | `DotNetFaultInjectionAgent.Runtime.dll` / `.deps.json` |
 | `WindowsChaosAgent.Tool` / `dotnet-chaos` | `DotNetFaultInjectionAgent.Tool` / `dotnet-fault-injection` |
-| `Invoke-Chaos.ps1` | `Invoke-FaultInjection.ps1` |
+| `Invoke-Chaos.ps1` | `tools/Invoke-FaultInjection.ps1` |
 | `WindowsChaosAgentProbe` | `DotNetFaultInjectionAgentProbe` |
 | `WindowsChaosSyncProbe` | `DotNetFaultInjectionAgentSyncProbe` |
 | `ChaosOrderBridge` | `DotNetFaultInjectionAgent.OrderBridge` |
@@ -35,7 +35,7 @@
 
 ## 再現用の検証
 
-- `python poc/scenarios/PlanDrivenInjection/Tests/verify.py`：Linux x64 / .NET 8の既存17ケース。
+- `python tests/PlanDrivenInjection/verify.py`：Linux x64 / .NET 8の既存17ケース。
 - 第2引数にDockerイメージ名、第3引数に旧 `WindowsChaosAgent.Runtime.dll` の実ファイルを指定すると、新旧DLLの同居試験を追加します。
 - `tools/Test-RenamedWindowsSamples.ps1`：準備済みWindowsサンプル7種類を実行し、発火・対象結果・EXE不変を確認します。注文投入サンプルの準備には外部の検証用プロジェクトが必要です。
 - `tools/Test-RenamedService.ps1 -Bundle <試験用配置先>`：管理者権限で専用サービスを登録し、基準実行・一回だけの注入・共有フラグ試験・登録解除を確認します。必要な配置物はSqlTarget.exe、SyncService.exe、verify済みplan.json、Rewrite.dll、Rewrite.xml、MicrosoftInstrumentationEngine_x64.dllです。

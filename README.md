@@ -70,6 +70,11 @@ Windowsの専用試験には、対象側に障害処理のヘルパーを組み�
 対象にヘルパーへの参照を追加しない方式は、Linux x64 / .NET 8の汎用計画PoCで検証しています。
 
 対応する呼び出しや環境は、各サンプルのREADMEにあります。
-開発用のソースと詳細な検証手順は [開発用の実装](poc/README.md)、説明方針の根拠は [類似ツールの調査](docs/research/tool-positioning.md) にまとめています。
+開発用のソースと詳細な検証手順は [開発用の実装](src/README.md)、説明方針の根拠は [類似ツールの調査](docs/research/tool-positioning.md) にまとめています。
 
 内部の識別子・成果物名を変更する際の影響は、[内部名と互換性](docs/development/naming-compatibility.md)にまとめています。
+
+## 開発と配布
+
+実装は `src/`、検証コードは `tests/`、計画スキーマは `schemas/`、操作スクリプトは `tools/` にあります。
+NuGet公開対象は計画作成CLIです。[パッケージの作成・検証と公開前の確認事項](docs/packaging/README.md)を参照してください。
