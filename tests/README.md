@@ -1,21 +1,18 @@
-# 実動作の検証
+# Runtime verification
 
-| フォルダ | 内容 |
+| Directory | Purpose |
 | --- | --- |
-| Fixtures | CoreFileTarget、SqlTarget、ProfilerTarget、SyncServiceの検証対象 |
-| CoreFileTarget | 専用CoreCLRファイル注入の検証手順 |
-| OrderAgentProbe | 注文投入サンプルを動かすホストとBridge |
-| PlanDrivenInjection | 独立したProbeとLinux用の自動注入試験 |
+| Fixtures | CoreFileTarget, SqlTarget, ProfilerTarget and SyncService targets |
+| CoreFileTarget | Dedicated CoreCLR file-injection instructions |
+| OrderAgentProbe | External order-sample host and Bridge |
+| PlanDrivenInjection | Independent Probe and Linux injection tests |
 
-検証用プロジェクトはNuGet公開対象ではありません。
-サンプル準備は [tools/Prepare-Samples.ps1](../tools/Prepare-Samples.ps1)、
-Windows試験は [tools/Test-RenamedWindowsSamples.ps1](../tools/Test-RenamedWindowsSamples.ps1)、
-サービス試験は [tools/Test-RenamedService.ps1](../tools/Test-RenamedService.ps1)を使います。
+Test projects are not NuGet publication targets. Use [Prepare-Samples.ps1](../tools/Prepare-Samples.ps1), [Windows sample tests](../tools/Test-RenamedWindowsSamples.ps1) and [service tests](../tools/Test-RenamedService.ps1).
 
-Linux試験はリポジトリのルートで次を実行します。事前に[ネイティブ拡張とエンジン](PlanDrivenInjection/DEVELOPMENT.md)を `src/Native/Linux/bin` に用意します。
+Build and place the [native extension and engine](PlanDrivenInjection/DEVELOPMENT.md) under src/Native/Linux/bin, then run:
 
 ```powershell
 python tests/PlanDrivenInjection/verify.py dotnet-fault-injection-runtime:local
 ```
 
-パッケージの内容・新規インストール・計画生成と照合は [tools/Test-Package.ps1](../tools/Test-Package.ps1) で検証します。
+[Package verification](../tools/Test-Package.ps1) checks content, clean installation and plan generation/verification.

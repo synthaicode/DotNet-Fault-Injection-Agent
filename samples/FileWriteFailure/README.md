@@ -1,22 +1,19 @@
-# 選んだファイルへの書き込みを失敗させるサンプル
+# Fail a write to a selected path
 
-選んだファイルへの書き込みを一回だけ失敗させ、同じ処理をもう一度実行したときの結果を比べます。
+## Target
 
-## 対象プログラム
+SqlTarget runs in file-test mode and writes twice to the path supplied as an argument. This mode does not use SQL.
 
-対象は `target` の SqlTarget です。ファイル試験モードで、引数で指定した同じパスへの書き込みを二回行います。
-このモードはSQL接続を使いません。
+## Plan or intervention
 
-## この計画で行う注入
+The plan selects Program.WriteSelected and File.WriteAllText. fault is io-error-before-write; maxFirings is 1. path is the destination condition, not the target EXE location.
 
-`plan.json` は Program.WriteSelected 内の File.WriteAllText を選びます。
-書き込み先が `path` と一致したとき、書き込む直前に IOException を投げます。
-`fault` は `io-error-before-write`、`maxFirings` は `1` です。
-`path` は書き込み先の条件で、注入対象のEXEの場所ではありません。
+## Expected observations
 
-## 期待する結果
+The first matching write throws IOException without creating a file; the second succeeds. Passing a destination different from plan.path causes no firing. Use a new file path.
 
-最初の一致では例外が発生し、ファイルが作られません。同じパスへの二回目の書き込みは成功します。
-計画のpathと異なる書き込み先を引数で渡すと、どちらの呼び出しでも発火しません。
+## Environment and limits
 
-試験にはまだ存在しないファイルのパスを使います。Windows x64 / .NET Framework 4.8用です。
+Windows x64 / .NET Framework 4.8.
+
+See [preparation and execution](../OPERATIONS.md).

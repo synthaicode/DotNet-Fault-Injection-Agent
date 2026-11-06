@@ -12,7 +12,7 @@ Copy-Item -LiteralPath $packagePath -Destination $feed
 $archive = [IO.Compression.ZipFile]::OpenRead($packagePath)
 try {
     $names = @($archive.Entries.FullName)
-    foreach ($required in @('README.md','schemas/injection-plan.v3.schema.json',
+    foreach ($required in @('README.md','LICENSE','AI-plan-guide.md','schemas/injection-plan.v3.schema.json',
         'tools/net10.0/any/DotNetFaultInjectionAgent.Tool.dll',
         'tools/net10.0/any/Planner.dll', 'tools/net10.0/any/Microsoft.CodeAnalysis.dll',
         'tools/net10.0/any/Microsoft.CodeAnalysis.CSharp.dll','tools/net10.0/any/DotnetToolSettings.xml')) {
@@ -28,6 +28,7 @@ try {
     $id = [string]$metadata.package.metadata.id
     $version = [string]$metadata.package.metadata.version
     if ($id -ne 'DotNetFaultInjectionAgent.Tool') { throw "Unexpected package ID: $id" }
+    if ($metadata.package.metadata.license.InnerText -ne 'MIT' -or $metadata.package.metadata.license.type -ne 'expression') { throw 'MIT SPDX metadata is missing.' }
     if ($metadata.package.metadata.readme -ne 'README.md') { throw 'NuGet README metadata is missing.' }
 } finally { $archive.Dispose() }
 $escapedFeed = [Security.SecurityElement]::Escape($feed)

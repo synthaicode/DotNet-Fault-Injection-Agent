@@ -1,76 +1,43 @@
-# 障害注入の設計
+# Fault injection design
 
-## 1. 実行時
-
-```mermaid
-flowchart LR
-    P["注入計画<br/>箇所・条件・障害を指定するJSON"]
-    T["注入ツール<br/>計画に従って障害を差し込む"]
-    A["対象プログラム<br/>注入される既存バイナリ"]
-
-    P -->|読み込む| T
-    T -->|実行中に注入する| A
-```
-
-## 2. 注入計画の作成時
-
-利用者が確かめたいことを伝え、利用者の環境で使うAIが注入計画を作ります。
-AIは、対象箇所の照合と計画の検証に計画作成ツールを使います。
+## Execution
 
 ```mermaid
 flowchart LR
-    A["対象情報<br/>バイナリ・対応するソース・PDB"]
-    I["利用者の目的<br/>何が起きたときの動作を確かめたいか"]
-    AI["利用者の環境のAI<br/>箇所・条件・障害を整理する"]
-    T["計画作成ツール<br/>対象を照合し計画を検証する"]
-    P["注入計画<br/>AIが用意する一つのJSON"]
-
-    A --> AI
-    I --> AI
-    AI -->|作成・照合・検証に使う| T
-    T --> P
+ P["Injection plan: call site, conditions, fault and firing limit"] -->|read| T["Injection tools"]
+ T -->|intervene in running process| A["Target application: existing binary"]
 ```
 
-## 3. ツールの定義
+## Planning
 
-| 図の中の役割 | 対応するツール | 責任 | 使う段階 |
-|---|---|---|---|
-| 計画作成ツール | dotnet-fault-injection.exe | 利用者の環境のAIが使い、対象情報の照合、計画の生成・検証を行う | 計画作成時 |
-| 注入ツール | tools/Invoke-FaultInjection.ps1 を入口とする実行機能 | 計画を渡して対象を起動し、プロファイラーを読み込ませて注入する | 実行時 |
+The user describes the behavior to test. The AI assistant in the user's environment inspects the binary, matching source and PDB, and uses the planning CLI to identify the call site and verify one JSON plan.
 
-注入ツールは、エンジン・拡張の読み込みと環境変数の設定をまとめて担当します。
-利用者がエンジンや拡張を個別に起動する構成にはしません。
+```mermaid
+flowchart LR
+ A["Binary, matching source and PDB"] --> AI["User's AI assistant"]
+ I["User's test objective"] --> AI
+ AI -->|generate and verify| T["Planning CLI"]
+ T --> P["One injection plan JSON"]
+```
 
-## 4. ファイルの定義
+The planning tool is `dotnet-fault-injection`. Windows execution uses `tools/Invoke-FaultInjection.ps1`, which configures the child process and loads the profiler engine and extension. Users provide the plan rather than starting engine components individually.
 
-### 対象と注入計画
+## Files and responsibilities
 
-| ファイル | 内容 | 使う段階 |
-|---|---|---|
-| 対象のEXE・DLL | 注入される既存バイナリ | 計画作成時に照合し、実行時に注入対象とする |
-| 対象に対応するソース | 注入箇所を選ぶための資料 | 計画作成時 |
-| 対象に対応するPDB | ソースの位置とバイナリ内の位置を照合するための資料 | 計画作成時 |
-| plan.json | 対象の照合情報、注入箇所、発火条件、障害、発火上限を記述する唯一の計画 | 計画作成時に出力し、実行時に読み込む |
+| File | Responsibility | Stage |
+| --- | --- | --- |
+| Target EXE/DLL | Existing binary to identify and instrument | Planning and execution |
+| Matching source | Select the source call | Planning |
+| Matching PDB | Bind source location to binary instructions | Planning |
+| plan.json | Target identity, call site, conditions, fault and budget | Generated/verified, then executed |
+| MicrosoftInstrumentationEngine_x64.dll | Windows profiler engine | Target startup |
+| Rewrite.xml | Select the extension DLL | Engine initialization |
+| Rewrite.dll | Read the plan and rewrite selected in-process calls | Execution |
 
-計画作成の出力と実行時の入力には、同じplan.jsonを使います。
-別の定義JSONや、定義を計画に変換する段階は設けません。
+Use the same verified plan.json as execution input. There is no separate definition JSON to convert into a plan. Source/project/build inputs belong to planning context rather than execution-plan fields. Engine, extension and configuration form a deployment unit; per-test sites and conditions belong in the plan.
 
-### 注入ツールの内部ファイル
+## Design and implementation boundaries
 
-| ファイル | 内容 | いつ使われるか |
-|---|---|---|
-| MicrosoftInstrumentationEngine_x64.dll | .NETに読み込ませるプロファイラー本体 | 対象プロセスの起動時 |
-| Rewrite.xml | エンジンが読み込む拡張DLLを指定する設定 | エンジンが拡張を読み込むとき |
-| Rewrite.dll | plan.jsonを読み、対象プロセス内の呼び出し命令を書き換える拡張 | 対象プロセスの実行中 |
+This document describes roles and relationships. The dedicated CoreFileTarget PoC contains a fault helper in the target DLL. Folder organization alone does not turn that fixture into helper-free injection. Generic helper-free plan injection has separately been verified on Linux x64 / .NET 8.
 
-これらは一組の実行用部品として注入ツール側にまとめます。
-試験ごとの注入箇所や発火条件は、plan.jsonで指定します。
-
-## 5. 設計と現在の実装の差
-
-この文書は、要素と関係を整理した設計です。
-現在のCoreFileTargetは、障害を起こす専用ヘルパーを対象DLLに組み込んだPoCです。
-既存バイナリに専用ヘルパーを追加せず注入する設計を成立させるには、注入ツール側で
-障害処理を提供する必要があります。この差は、フォルダや説明を整理しただけでは解消しません。
-
-サンプルの対象と計画は [サンプル一覧](samples/README.md) にまとめています。
+See [samples](samples/README.md) and the [AI planning guide](src/Tool/AI-plan-guide.md).

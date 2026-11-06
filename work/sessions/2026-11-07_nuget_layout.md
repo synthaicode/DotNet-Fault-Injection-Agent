@@ -1,27 +1,23 @@
-# 2026-11-07: NuGet公開に向けたフォルダ整理
+# 2026-11-07: Repository organization for NuGet
 
-## 変更
+## Changes
 
-- 配布実装をsrc/Tool、Planner、Runtime、Shared、Native/Windows、Native/Linuxへ移動。
-- 検証対象・ホスト・自動試験をtests/Fixtures、OrderAgentProbe、CoreFileTarget、PlanDrivenInjectionへ移動。
-- version 3スキーマをschemas/へ、Windows起動スクリプトをtools/へ移動。
-- 生成パッケージとパッケージ検証出力をartifacts/へ集約し、Git管理から除外。
-- 管理対象をビルドするslnx、Toolだけをpack対象にする設定、Pack.ps1、Test-Package.ps1を追加。
-- NuGet用README・スキーマをパッケージに追加し、メタデータ・プロジェクト参照・文書リンク・実行スクリプトを更新。
-- 既存の過去セッション記録は当時の事実として維持。
+Moved implementation to src/Tool, Planner, Runtime, Shared and Native/Windows/Linux; verification fixtures/hosts to tests/Fixtures, OrderAgentProbe, CoreFileTarget and PlanDrivenInjection; version 3 schema to schemas/; Windows launcher to tools/. Generated packages and package-verification output use ignored artifacts/.
 
-## 検証
+Added a managed solution, Tool-only pack selection, Pack.ps1 and Test-Package.ps1. Included NuGet README/schema and updated metadata, project references, links and scripts. Historical session facts were retained.
 
-- 新構成のソリューションビルド: エラー・警告0。
-- Pack.ps1: README欠落警告なしで成功。
-- 追跡ファイルだけを別ディレクトリへ展開した構成から再packし、新規ローカルフィード・空キャッシュでインストール成功。capabilities、実Probeの計画生成・照合が成功。[パッケージ証跡](2026-11-07_nuget-layout/package-summary.json)
-- 指定した新パッケージを用いて、注文投入を含む全サンプル準備が成功。
-- Windowsサンプル7種類成功。[証跡](2026-11-07_nuget-layout/windows-summary.json)
-- Linuxネイティブを新配置から再ビルドし、既存17ケース＋旧DLL同居1ケースの計18ケース成功。[証跡](2026-11-07_nuget-layout/linux-summary.json)
-- PowerShell構文、Markdown相対リンク、csprojの共有ソース・プロジェクト参照、差分チェックに成功。
+## Verification
 
-Windowsネイティブは直前の改名検証でビルド・実行確認した同一ソースのバイナリを新配置に置いて使用。Windowsサービスの実動作は今回再実行しておらず、直前の改名検証の結果と区別する。
+- Solution build passed with zero errors/warnings.
+- Pack.ps1 passed without a missing-README warning.
+- Exported tracked files only to a separate directory, repacked and installed using a new local feed/empty cache. Capabilities and actual Probe plan generation/verification passed. [Package evidence](2026-11-07_nuget-layout/package-summary.json)
+- All sample deployments, including external orders, prepared with the new package.
+- Seven Windows samples passed. [Evidence](2026-11-07_nuget-layout/windows-summary.json)
+- Linux native rebuilt from its new location; 17 existing cases plus old-DLL coexistence passed. [Evidence](2026-11-07_nuget-layout/linux-summary.json)
+- PowerShell syntax, Markdown links, shared-source/project references and diff checks passed.
 
-## 公開前の残件
+Windows native binaries came from the preceding rename verification with identical source and were copied to the new location. Service runtime tests were not rerun in this layout phase; distinguish the preceding service evidence.
 
-NuGet.orgへは公開していない。ライセンス未指定、公開バージョン・パッケージID権限・認証の確認、非公開GitHubに代わる利用者向け文書の閲覧先が残る。Native/RuntimeをNuGetで配る設定は今回追加していない。
+## Remaining items at that time
+
+No NuGet.org publication. License was then unspecified; release version, ID ownership/authentication and documentation access outside the private GitHub repository remained unresolved. This change did not configure Native/Runtime NuGet distributions. Later MIT selection is a subsequent decision, not a change to this historical state.

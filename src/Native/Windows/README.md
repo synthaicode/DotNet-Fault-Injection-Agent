@@ -1,7 +1,5 @@
-# Windows用プロファイラー拡張
+# Windows profiler extension
 
-CLR Instrumentation Engineに読み込ませる拡張の開発用ソースです。
-拡張は計画を読み、対象プロセス内の呼び出し命令を書き換えます。
-利用時は、ビルド済みの拡張、エンジン、XMLを一組のランタイムとして配置します。
-[サンプルの準備手順](../../../samples/OPERATIONS.md)で、利用時の入口を説明しています。
-C++のビルド条件と過去の検証結果は [開発用の詳細](DEVELOPMENT.md) にあります。
+Development source for an extension loaded by CLR Instrumentation Engine. It reads the plan and rewrites selected calls in the target process. Deploy the compiled extension, engine and XML together.
+
+See [sample operations](../../../samples/OPERATIONS.md) and [native build details](DEVELOPMENT.md).

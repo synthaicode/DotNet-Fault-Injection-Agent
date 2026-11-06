@@ -1,10 +1,8 @@
-# DotNet Fault Injection Agentの内部名と互換性
+# Internal names and compatibility
 
-製品の表示名は「DotNet Fault Injection Agent」、GitHubリポジトリ名は `DotNet-Fault-Injection-Agent` です。内部名も次の対応で移行します。
+The display name is DotNet Fault Injection Agent and the repository is DotNet-Fault-Injection-Agent. Internal identifiers migrated as follows.
 
-## 変更対応表
-
-| 旧名 | 新名 |
+| Previous name | Current name |
 | --- | --- |
 | `WindowsChaosAgent` | `DotNetFaultInjectionAgent` |
 | `WindowsChaosAgent.Runtime.dll` / `.deps.json` | `DotNetFaultInjectionAgent.Runtime.dll` / `.deps.json` |
@@ -19,25 +17,24 @@
 | `libChaosRewrite.so` | `libDotNetFaultInjectionAgent.so` |
 | `windows-chaos-runtime:local` | `dotnet-fault-injection-runtime:local` |
 
-例外メッセージの製品名と、その結果を照合するOrderAgentProbeも同時に変更します。Windows拡張XMLのNameも新名称に合わせます。`Rewrite.dll`、`Rewrite.xml`、プロファイラーのGUID、計画JSON version 1/2/3、イベント名 `chaos.fired` は維持します。
+The product name in the exception message, its OrderAgentProbe comparison, and the Windows extension XML Name were changed together. Rewrite.dll, Rewrite.xml, profiler GUID, JSON plan versions 1/2/3 and event chaos.fired remain stable.
 
-## 移行手順
+## Migration
 
-旧CLI名・環境変数・DLL名の別名互換は提供しません。旧版の構成の一部だけを新しい名前に変更しないでください。
+No aliases are provided for old CLI names, environment variables or DLL names. Deploy a consistent version rather than renaming only part of an old deployment.
 
-1. 旧版と別の空ディレクトリで、新版のツール・Windows拡張・Linux拡張・共通ランタイムをビルドします。[準備手順](../../samples/OPERATIONS.md)のローカルパッケージをインストールします。NuGet.orgへの公開は別作業です。
-2. 同じ新版からXML、ネイティブ拡張、ランタイムDLLとdeps.json、起動スクリプトを一式配置します。対象アプリには新ランタイムへのProjectReferenceを追加する必要はありません。
-3. 起動設定を新しい環境変数へ変更します。サンプルEXEを再ビルドした場合は、ハッシュ・MVID・PDBが変わるため計画を再生成・照合します。利用者の既存アプリも、使用する実バイナリに対して計画を照合します。
-4. 旧Windowsサービスは、その所有者・実行ファイル・停止可能な状態を確認してから停止・登録解除し、新名で登録します。Environmentレジストリ設定も新サービスへ明示的に設定します。この変更で既存サービスを自動変更しません。
-5. 新しい設定で計画受理・IL書換え・発火回数・対象の結果を確認してから切り替えます。ロールバックは保存した旧版一式と旧起動設定を使います。
+1. Build the new CLI, Windows/Linux extensions and runtime in a separate empty directory. Install the local package using the [preparation steps](../../samples/OPERATIONS.md). NuGet.org publication is separate.
+2. Deploy XML, native extension, runtime DLL/deps.json and launcher from the same version. The target does not need a ProjectReference to the new runtime.
+3. Update launch variables. Rebuilding fixtures changes hash/MVID/PDB: regenerate and verify plans. For existing applications, verify against the actual binary to be executed.
+4. Before stopping/unregistering an old service, check its owner, executable and suitability for stopping. Register the new service and explicitly configure its Environment values. Existing services are not automatically changed.
+5. Confirm acceptance, rewriting, firing count and target outcomes before switching. Roll back using the saved complete old deployment and old startup settings.
 
-サービスの移行手順は検証用サービスを想定しています。既存の業務サービスへのインプレース移行や、署名済み拡張の配布は検証範囲に含みません。
+These steps concern dedicated test services. In-place migration of existing business services and signed-extension distribution were not verified.
 
-## 再現用の検証
+## Reproduce verification
 
-- `python tests/PlanDrivenInjection/verify.py`：Linux x64 / .NET 8の既存17ケース。
-- 第2引数にDockerイメージ名、第3引数に旧 `WindowsChaosAgent.Runtime.dll` の実ファイルを指定すると、新旧DLLの同居試験を追加します。
-- `tools/Test-RenamedWindowsSamples.ps1`：準備済みWindowsサンプル7種類を実行し、発火・対象結果・EXE不変を確認します。注文投入サンプルの準備には外部の検証用プロジェクトが必要です。
-- `tools/Test-RenamedService.ps1 -Bundle <試験用配置先>`：管理者権限で専用サービスを登録し、基準実行・一回だけの注入・共有フラグ試験・登録解除を確認します。必要な配置物はSqlTarget.exe、SyncService.exe、verify済みplan.json、Rewrite.dll、Rewrite.xml、MicrosoftInstrumentationEngine_x64.dllです。
+- `python tests/PlanDrivenInjection/verify.py` runs 17 Linux x64/.NET 8 cases. Supply image name as the first positional argument and an actual old WindowsChaosAgent.Runtime.dll as the second to add coexistence verification.
+- `tools/Test-RenamedWindowsSamples.ps1` runs seven prepared samples and checks firing, target results and binary immutability. Preparing order tests requires the external sample project.
+- `tools/Test-RenamedService.ps1 -Bundle <directory>` registers dedicated services as administrator, checks baseline/one firing/shared flags and removes registration. Bundle SqlTarget.exe, SyncService.exe, a verified plan.json, Rewrite.dll, Rewrite.xml and MicrosoftInstrumentationEngine_x64.dll.
 
-実測結果は[改名検証のセッション記録](../../work/sessions/2026-11-07_internal_name_verification.md)に記載しています。
+See the [recorded rename verification](../../work/sessions/2026-11-07_internal_name_verification.md).

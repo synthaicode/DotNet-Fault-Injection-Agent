@@ -1,25 +1,19 @@
-# 注文投入の完了順を逆転させるサンプル
+# Reverse order-submission completion
 
-先に来た注文投入だけを待たせ、後から来た処理が先に完了する状態を作ります。
-各処理が終わるたびに、画面側の件数とDBの件数が一致するかを確認します。
+## Target
 
-## 対象プログラム
+The verification host runs the real Wide World Importers form with two workers.
 
-対象はMicrosoftのWide World Importers注文投入サンプルです。
-検証用ホストが実際の画面を動かし、二つのワーカーで注文を投入します。
+## Plan or intervention
 
-## この計画で行う注入
+The plan selects ExecuteNonQuery in PerformSqlTask for Website.InsertCustomerOrders in the test database. fault is delay-before-send, delayMs is 4000 and maxFirings is 1. The original SQL call runs after the delay.
 
-`plan.json` は PerformSqlTask 内の ExecuteNonQuery を選びます。
-検証用DBへの `Website.InsertCustomerOrders` の呼び出しが条件に一致したとき、送信前に待機させます。
-`fault` は `delay-before-send`、`delayMs` は `4000`、`maxFirings` は `1` です。
-待機後は元のSQL呼び出しへ進みます。
+## Expected observations
 
-## 期待する結果
+Worker A arrives first and is delayed; B completes before A. After B completes, application and DB counts are 1; after A completes, both are 2. One fault fires.
 
-先着のワーカーAが遅延に入り、ワーカーB、Aの順に完了します。
-Bの完了後にアプリとDBが1件、Aの完了後に両方2件になります。
-発火は一回です。
+## Environment and limits
 
-外部サンプル、Windows / .NET Framework 4.8、隔離したLocalDBが必要です。
-この試験ではAgentによる送信前の遅延と、観測区間を分けるためのDB側の待機を併用します。
+Requires the external sample, Windows / .NET Framework 4.8 and isolated LocalDB. The test combines an agent pre-send delay with database-side waiting to isolate the observation interval.
+
+See [preparation and execution](../OPERATIONS.md).

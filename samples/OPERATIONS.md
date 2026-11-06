@@ -1,106 +1,66 @@
-# サンプルの準備と実行
+# Prepare and run samples
 
-各サンプルのREADMEは、計画の意味と期待する結果を説明するものです。
-ここでは配布物の準備と、実行ツールの使い方を説明します。
+The sample READMEs describe plan meaning and expected behavior. This page describes deployment and execution.
 
-## 注入計画を作る担当
+## Create a plan with your AI assistant
 
-注入計画は、利用者の環境で使っているAIが作ります。
-利用者は対象プログラムと確かめたいことを伝え、AIが計画作成ツールを使って箇所を照合し、
-条件、障害、回数を設定した一つのJSONを作成・検証します。
-作成した計画で何を起こすかを確認してから、実行に使います。
+Describe the application and test objective to the AI assistant in your environment. It inspects the target and uses the planning CLI to bind the call site, select supported conditions/faults and verify one plan.json. Review what the plan will do before execution. See the [copyable request](../src/Tool/AI-plan-guide.md).
 
-以下の配布物の準備は、このリポジトリのサンプルを用意する開発用の作業です。
-利用者の既存プログラムを注入のためにビルドし直す手順ではありません。
+## Prepare deployments
 
-## 配布物の準備
+Preparation builds the repository's test fixtures and generates plans from their deployed binaries. It does not run the sample applications and does not mean a user's existing application must be rebuilt for injection.
 
-開発環境で `tools/Prepare-Samples.ps1` を実行すると、各サンプルの対象、資料、計画、道具を生成します。
-対象のソースをビルドし、作った配布物から計画を生成・照合する作業です。対象アプリは実行しません。
-
-必要なものは、.NET 10 SDK、.NET 8のターゲットパック、.NET Framework 4.8の参照アセンブリ、
-計画作成ツール、ビルド済みのWindows用・Linux用ランタイムです。
-計画作成ツールはリポジトリのルートで次のように作成・インストールします。
+Requirements: .NET 10 SDK, .NET 8 targeting support, .NET Framework 4.8 reference assemblies, the planning tool and built Windows/Linux runtimes.
 
 ```powershell
 dotnet pack src/Tool -c Release -o artifacts/packages
 dotnet tool install DotNetFaultInjectionAgent.Tool --version 0.1.0-preview.4 --tool-path .tools --add-source artifacts/packages
 .tools/dotnet-fault-injection.exe v3 capabilities
+./tools/Prepare-Samples.ps1
 ```
 
-この手順はローカルで作成したパッケージを使います。NuGet.orgへの公開を前提にしません。
-別のディレクトリへインストールした場合は、`Prepare-Samples.ps1 -ToolDirectory <ツール配置先>` で指定できます。
-エンジンと拡張のビルド方法は [Windows](../src/Native/Windows/DEVELOPMENT.md) と
-[Linux](../tests/PlanDrivenInjection/DEVELOPMENT.md) の開発用文書にあります。
+These commands use a locally built package; they do not assume NuGet.org publication. Use `-ToolDirectory <directory>` for a different tool installation. Native build instructions: [Windows](../src/Native/Windows/DEVELOPMENT.md), [Linux](../tests/PlanDrivenInjection/DEVELOPMENT.md).
 
-既存の計画を置き換える場合だけ `-Force` を付けます。
-このスイッチは、既に編集したサンプルの計画や生成物を置き換えます。
+Use `-Force` only when intentionally replacing generated plans/deployments. For order samples, provide both `-OrderProject` and `-OrderBinary`, with the matching Portable PDB beside the external EXE. Without them the order deployments are skipped.
 
-注文投入のサンプルは、外部プロジェクトとビルド済みEXEを `-OrderProject` と `-OrderBinary` で指定します。
-対応するPortable PDBもEXEと同じ場所に用意します。指定しない場合、この二つの配布物は生成しません。
+## Windows execution
 
-## Windowsでの配置
-
-対象の配布物は `target`、計画作成用の資料は `reference` にあります。
-一つの `plan.json` と `tools` 一式を使います。
-`tools/runtime` はエンジン、拡張、XMLをまとめた内部部品です。
-環境変数とXMLの場所は起動ツールが設定するため、試験ごとに個別編集する必要はありません。
-
-## Windowsでの実行
-
-PowerShell 7を使い、実行したいサンプルのフォルダへ移動します。
-以下はCoreFileTargetの例です。記載した相対パスは、すべてそのサンプルフォルダを基準にします。
+Use PowerShell 7. In a sample folder, target/ holds the application, reference/ holds planning inputs, plan.json is the execution plan and tools/runtime holds engine, extension and XML. The launcher sets profiler environment variables.
 
 ```powershell
 $plan = Get-Content -Raw ./plan.json | ConvertFrom-Json
 ./tools/Invoke-FaultInjection.ps1 -Target ./target/CoreFileTarget.exe -Plan ./plan.json -RuntimeDirectory ./tools/runtime -TargetArguments $plan.path
 ```
 
-他のWindowsサンプルは、対象とアプリ用の引数を次のように変更します。
+| Sample | Target | TargetArguments |
+| --- | --- | --- |
+| CoreFileTarget | CoreFileTarget.exe | plan.path |
+| SqlTimeout | SqlTarget.exe | none |
+| FileWriteFailure | SqlTarget.exe | --file, plan.path |
+| TcpConnectionRefused | SqlTarget.exe | --network, plan.port |
+| ProfilerReturnValue | ProfilerTarget.exe | none; omit Plan |
 
-| サンプル | 対象EXE | アプリ用の引数 |
-|---|---|---|
-| CoreFileTarget | CoreFileTarget.exe | 計画のpath |
-| SqlTimeout | SqlTarget.exe | なし |
-| FileWriteFailure | SqlTarget.exe | `--file` と計画のpath |
-| TcpConnectionRefused | SqlTarget.exe | `--network` と計画のport |
-| ProfilerReturnValue | ProfilerTarget.exe | なし。起動ツールにPlanを指定しない |
+TargetArguments are application arguments, not plan fields. File tests require a nonexistent destination. Reusing the same plan after a successful write can be rejected because the file already exists.
 
-`TargetArguments` は対象アプリに渡す引数です。注入計画の項目ではありません。
-ファイル試験は、計画のpathにまだファイルがないことを確認して開始します。
-試験後に同じ計画で再実行すると、既存ファイルを理由に対象が開始を拒否します。
+SharedFlags uses `target/SyncService.exe --console` without the injector. See [service registration](../tests/Fixtures/SyncService/DEVELOPMENT.md).
 
-SharedFlagsは注入ツールを使わず、`target/SyncService.exe` に `--console` を渡して実行します。
-Windowsサービスへの登録手順は [開発用の説明](../tests/Fixtures/SyncService/DEVELOPMENT.md) にあります。
+## Order samples
 
-## 注文投入サンプルの実行
+The verified binary and launched EXE differ. Set Target to target/OrderAgentProbe.exe and PlanTarget to target/MultithreadedOrderInsert.exe, with Plan=plan.json and RuntimeDirectory=tools/runtime.
 
-注文投入は検証用ホストを使うため、注入箇所を照合するEXEと、起動するEXEが異なります。
-起動ツールのTargetに `target/OrderAgentProbe.exe`、PlanTargetに `target/MultithreadedOrderInsert.exe` を指定します。
-Planには `plan.json`、RuntimeDirectoryには `tools/runtime` を指定します。
+TargetArguments are the external sample EXE's absolute path, plan.database and a mode: inject for OrderTimeout or overlap for OrderDelay. The host creates a uniquely named test database and deletes it afterward. Use an isolated test environment, not an existing application database.
 
-TargetArgumentsに渡すのは、外部サンプルEXEの絶対パス、計画のdatabase、実行モードの三つです。
-モードはOrderTimeoutが `inject`、OrderDelayが `overlap` です。
-検証用ホストは、一意な名前の試験用DBを作成し、終了時に削除します。
-実DBや既存の業務DBを指定しないでください。
+## Linux execution
 
-## Linuxでの実行
-
-PlanDrivenInjectionでは、Windows用の起動ツールと計画作成ツールを使いません。
-計画作成には `tools/planner/Planner.dll`、実行には `tools/Invoke-LinuxSample.ps1` を使います。
-Dockerで `dotnet-fault-injection-runtime:local` イメージを使えることを前提にします。
-
-サンプルフォルダで、次を実行します。
+The generic sample uses tools/planner/Planner.dll and tools/Invoke-LinuxSample.ps1, not the Windows version 1/2 launcher. Have Docker image dotnet-fault-injection-runtime:local available.
 
 ```powershell
 ./tools/Invoke-LinuxSample.ps1 -Sample .
+./tools/Invoke-LinuxSample.ps1 -Sample . -ConditionMismatch
 ```
 
-条件不一致を試すときは `-ConditionMismatch` を付けます。
-実行結果と、その実行で使った計画は `evidence` に保存します。
+The plan and logs used for each run are saved under evidence/.
 
-## 結果の確認
+## Observe results
 
-Windowsの起動ツールは、計画受理、計画拒否、IL書換え、発火回数、対象ファイルの不変を別々に返します。
-終了コード0だけで注入成功とは判定しません。各サンプルのREADMEにある結果と照合します。
-Linuxでは、計画受理、IL書換え、chaos.fired、各タスクの結果をログで確認します。
+Check plan acceptance, rejection, IL rewriting, firing count and binary immutability separately. Exit code zero alone does not prove injection succeeded. For Linux, check plan accepted, IL rewritten, chaos.fired and task results. Compare the observed application/file/database state with the sample's expectations.

@@ -1,5 +1,3 @@
-# 汎用計画による注入の開発用ソース
+# Generic plan-driven call injection
 
-対象プログラム、注入内容、期待する結果は [サンプルのREADME](../../samples/PlanDrivenInjection/README.md) にまとめています。
-
-ビルド手順と過去の検証結果は [開発用の詳細](DEVELOPMENT.md) を参照してください。
+See the [sample](../../samples/PlanDrivenInjection/README.md) for target, plan and expected observations. [Development details](DEVELOPMENT.md) describe supported scope, native build and independent verification.

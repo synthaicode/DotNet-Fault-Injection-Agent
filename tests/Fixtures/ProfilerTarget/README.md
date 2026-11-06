@@ -1,3 +1,3 @@
-# ProfilerTarget の開発用ソース
+# ProfilerTarget fixture source
 
-対象プログラム、注入内容、期待する結果は [サンプルのREADME](../../../samples/ProfilerReturnValue/README.md) にまとめています。
+See the [sample](../../../samples/ProfilerReturnValue/README.md) for the target, intervention and expected observations.

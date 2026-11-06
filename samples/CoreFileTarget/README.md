@@ -1,25 +1,19 @@
-# ファイル書き込みを一回だけ失敗させるサンプル
+# Fail one file write
 
-このサンプルではファイルへ二回書き込むプログラムに対して、最初の書き込みだけを失敗させます。
-注入内容は `plan.json` に記述します。
+## Target
 
-## 対象プログラム
+CoreFileTarget calls File.WriteAllText from WriteSelected twice for the same file. It catches IOException, reports it and continues.
 
-対象は `target` の CoreFileTarget です。`WriteSelected` から同じファイルへ二回書き込みます。
-IOException が発生した場合は、その例外を表示して次の書き込みへ進みます。
+## Plan or intervention
 
-## この計画で行う注入
+The plan selects WriteSelected. When the destination equals path, io-error-before-write throws IOException before opening the file. maxFirings is 1.
 
-`WriteSelected` 内の File.WriteAllText を注入箇所にします。
-書き込み先が `path` と一致したとき、書き込む直前に IOException を投げます。
-`fault` は `io-error-before-write`、`maxFirings` は `1` です。
+## Expected observations
 
-## 期待する結果
+The first call throws and creates no file. The second call succeeds and creates the file. Use a destination that does not already exist.
 
-| 呼び出し | 結果 | ファイルの状態 |
-|---|---|---|
-| 一回目 | 注入した例外が発生する | 作られない |
-| 二回目 | 書き込みに成功する | 作られる |
+## Environment and limits
 
-試験にはまだ存在しないファイルのパスを使います。
-この専用PoCは対象DLL内に組み込んだ障害処理を使います。Windows x64 / .NET 10用です。
+Windows x64 / .NET 10. This dedicated PoC includes a fault helper in the target DLL.
+
+See [preparation and execution](../OPERATIONS.md).
