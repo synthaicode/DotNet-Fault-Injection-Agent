@@ -9,3 +9,5 @@ Locally installed the dual-platform package, exported linux-x64 from the CLI and
 The GitHub Packages workflow now builds/transfers the Linux payload, publishes the dual-platform package from Windows, tests the feed on Windows, then installs the same published version on Ubuntu and runs the Linux launcher and independent suite. Remote results are recorded after the run completes.
 
 Scope: Linux x64 glibc, Debian 12 build and .NET 8 target, OpenSSL 3, libstdc++. CLI requires .NET 10. Alpine/musl, ARM64, macOS and all Linux distributions are not claimed. No NuGet.org publication.
+
+Added required virus scanning at the user's request: local Windows package creation uses updated Defender; Actions updates ClamAV and scans both archive/extracted contents before publication, records the package hash and blocks publication on errors/detections/stale definitions. Remote results pending. Replaced host-specific SDK Roslyn assemblies with the portable Microsoft.CodeAnalysis.CSharp 5.0.0 package after Linux feed verification exposed BadImageFormatException. Fresh-output package now starts/exports on Linux; Windows fixture tests passed.
