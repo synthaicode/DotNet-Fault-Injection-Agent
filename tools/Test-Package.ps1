@@ -13,6 +13,7 @@ $archive = [IO.Compression.ZipFile]::OpenRead($packagePath)
 try {
     $names = @($archive.Entries.FullName)
     foreach ($required in @('README.md','LICENSE','AI-plan-guide.md','schemas/injection-plan.v3.schema.json',
+        'licenses/Roslyn.LICENSE.txt','licenses/Roslyn.ThirdPartyNotices.rtf',
         'tools/net10.0/any/DotNetFaultInjectionAgent.Tool.dll',
         'tools/net10.0/any/Planner.dll', 'tools/net10.0/any/Microsoft.CodeAnalysis.dll',
         'tools/net10.0/any/Microsoft.CodeAnalysis.CSharp.dll','tools/net10.0/any/DotnetToolSettings.xml')) {
