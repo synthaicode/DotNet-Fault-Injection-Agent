@@ -1,0 +1,10 @@
+{
+  "Package": "DotNetFaultInjectionAgent.Tool.0.1.0-preview.4.nupkg",
+  "Sha256": "6DA9F9D38E2132743FDD8F92A68E1AE0E381AC9FF21AC00BCE9C42A7CFC5D391",
+  "Engine": "Microsoft Defender",
+  "EngineVersion": "1.1.26100.4",
+  "Definitions": "1.463.165.0",
+  "ScannedAtUtc": "2026-11-06T23:12:17.1590531Z",
+  "ArchiveAndExtractedFiles": true,
+  "Result": "passed"
+}

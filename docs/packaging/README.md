@@ -6,7 +6,7 @@ Implementation lives in `src/`, verification fixtures and hosts in `tests/`, use
 
 The publishable project is `src/Tool/SourceMap.csproj`, producing `DotNetFaultInjectionAgent.Tool`. `Directory.Build.props` disables packing by default; only Tool enables it. Planner is included as a CLI dependency. Runtime, native extensions and test programs are not separately configured for NuGet publication.
 
-The package includes the CLI, Planner, required managed dependencies including Roslyn, an English README, the AI planning guide, MIT license text and version 3 schema. The Windows x64 Engine, native extension, XML, launcher, checksum manifest and third-party notices are included under the installed tool runtime/win-x64 directory. Users export them with the CLI. Linux execution assets and the generic managed Runtime are not included.
+The package includes the CLI, Planner, required managed dependencies including Roslyn, an English README, the AI planning guide, MIT license text and version 3 schema. The Windows x64 Engine, native extension, XML, launcher, checksum manifest and third-party notices are included under the installed tool runtime/win-x64 directory. Users export them with the CLI. Linux execution assets and the generic managed Runtime are also bundled under runtime/linux-x64.
 
 ## Build and verify
 
@@ -29,7 +29,7 @@ Package metadata is maintained in the Tool csproj. The package README is [nuget-
 
 The project uses the [MIT License](../../LICENSE), also declared through NuGet's SPDX license metadata. Dependencies retain their own licenses.
 
-Confirm the publication version, ownership of the NuGet.org package ID and publishing credentials. The GitHub repository is currently private: decide where package users can read the linked documentation. The Windows Engine provenance and notices for this package are documented below. Linux runtime redistribution remains a separate distribution task.
+Confirm the publication version, ownership of the NuGet.org package ID and publishing credentials. The GitHub repository is currently private: decide where package users can read the linked documentation. The Windows Engine provenance and notices for this package are documented below. Linux payload build, licenses and platform conditions are described below.
 
 Build release packages from the selected source revision and rerun package verification. The preparation scripts do not push to NuGet.org.
 
@@ -55,3 +55,19 @@ Users downloading private test packages outside Actions need a package-readable 
 dotnet tool install DotNetFaultInjectionAgent.Tool --tool-path ./test-tools --version <test-version> --add-source https://nuget.pkg.github.com/synthaicode/index.json
 ./test-tools/dotnet-fault-injection.exe runtime export --output ./fault-runtime
 ```
+
+## Linux payload build and validation
+
+The Linux build job uses src/Native/Linux/Build/Dockerfile (.NET 8 Debian 12 SDK), pinned Engine source and pinned vcpkg baseline 2d318737bc7daa8a872f4469955a0559686f7580. It installs make/jq/clang/LLVM/CMake and native prerequisites. Debian glibc 2.34+ retains libdl.so.2 but lacks the unversioned name explicitly requested by upstream; the build image provides a symlink to the shared system library. No libdl binary is redistributed.
+
+Build-LinuxRuntime.sh runs the upstream build and tests, builds this repository's native extension/managed runtime, stages the payload, records ldd dependencies and rejects unresolved imports. Engine/upstream notices, nlohmann and vcpkg libxml2/utfcpp copyright files are included. The default package requires both staged platform manifests.
+
+Actions first builds the Linux payload and transfers it to the Windows package job. After the required virus scan and publication, Windows and Linux consumers run independently. The Linux consumer downloads the same GitHub package using GITHUB_TOKEN, compares its archive hash and runs the exported Bash launcher. It then runs the independent injection suite with FAULT_RUNTIME_DIRECTORY pointing to the package export; this prevents accidentally testing a separately built Engine/managed runtime. Source projects are only compiled as test targets/planning tools in that verification step.
+
+## Required virus scan
+
+Package creation includes a virus scan. On Windows, Pack.ps1 updates Microsoft Defender definitions and scans the nupkg plus all extracted files; an unavailable scanner, stale definitions, detection or scan error fails the command. Scan-Package.ps1 records the archive SHA-256, scanner/definition version, UTC time and scan log under artifacts/package-scans. It does not delete or remediate files.
+
+Actions uses Pack.ps1 -CandidateOnly to build an unpublished candidate, then transfers that exact archive to the required Ubuntu scan-and-publish job. The job updates ClamAV definitions with freshclam and scans the archive and extracted files. Encrypted content and exceeded scan limits are failures; definitions older than three days are rejected. Publication requires a passing report with the same archive SHA-256. Definition update/scan failures stop publication and both feed-consumer jobs. The package-virus-scan artifact preserves the report and log.
+
+On Linux, update ClamAV definitions successfully before calling Pack.ps1 or Scan-Package.ps1. CandidateOnly is solely an intermediate build step; it is not a successful scanned release. Do not publish such a candidate without scanning it. A clean scan records the scanner's result at that time and is not a guarantee of the absence of malware.

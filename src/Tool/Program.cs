@@ -17,7 +17,7 @@ if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
     Console.WriteLine("Start here: dotnet-fault-injection guide");
     Console.WriteLine("Identify the target runtime and OS before generating a plan.");
     Console.WriteLine("Commands: guide | capabilities | dotnet list/plan/verify | windows-fixture list/recommend/plan/verify");
-    Console.WriteLine("Bundled Windows execution: runtime export --output <new-directory>");
+    Console.WriteLine("Bundled execution: runtime export [--rid win-x64|linux-x64] --output <new-directory>");
     Console.WriteLine("dotnet: generic Linux x64/.NET 8 injection; windows-fixture: dedicated Windows Framework/CoreCLR samples.");
     return 0;
 }
