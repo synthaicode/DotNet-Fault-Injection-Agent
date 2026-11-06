@@ -10,10 +10,18 @@ For example, ask whether a single failed order submission stops the worker and r
 
 ## Copyable request
 
+Start by giving the assistant access to this guide. With the CLI installed, ask it to run
+`dotnet-fault-injection guide` and read the output. With a repository checkout, ask it to
+read `src/Tool/AI-plan-guide.md`. Both contain the same guide, embedded into the CLI at build time.
+The CLI route works offline and does not require access to the GitHub repository.
+
 Replace the bracketed inputs with actual paths and test conditions:
 
 ```text
-Create and verify one injection plan for this application using DotNet Fault Injection Agent.
+First run `dotnet-fault-injection guide` and read its output. If you are working from
+a repository checkout instead, read `src/Tool/AI-plan-guide.md` there.
+Follow that guide to create and verify one injection plan for the application below.
+If neither source is accessible, report the missing guide before proceeding.
 
 Target binary: [absolute EXE or DLL path]
 Matching Portable PDB: [path]

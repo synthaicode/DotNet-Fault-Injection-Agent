@@ -41,6 +41,16 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Clean tool installation failed.' }
 } finally { $env:NUGET_PACKAGES = $originalCache }
 $command = Join-Path $toolPath $(if ($IsWindows) { 'dotnet-fault-injection.exe' } else { 'dotnet-fault-injection' })
+$guide = (& $command guide) -join "`n"
+if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed guide.' }
+$expectedGuide = [IO.File]::ReadAllText((Join-Path $root 'src/Tool/AI-plan-guide.md')).Replace("`r`n", "`n").TrimEnd()
+if ($guide.TrimEnd() -cne $expectedGuide) { throw 'Installed guide differs from repository guide.' }
+foreach ($helpArguments in @(@(), @('--help'))) {
+    $helpText = (& $command @helpArguments) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or $helpText -notmatch 'dotnet-fault-injection guide') { throw 'Guide discovery failed.' }
+}
+& $command guide unexpected 2>$null
+if ($LASTEXITCODE -ne 1) { throw 'Invalid guide arguments were not rejected.' }
 $capabilities = & $command v3 capabilities
 if ($LASTEXITCODE -ne 0 -or ($capabilities | ConvertFrom-Json).planVersion -ne 3) { throw 'Installed CLI failed capabilities.' }
 $probe = Join-Path $root 'tests/PlanDrivenInjection/Probe'
@@ -55,6 +65,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed to create a plan.' }
 & $command v3 verify $binary $source $line $plan
 if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed plan verification.' }
 $summary = [pscustomobject]@{ PackageId=$id; Version=$version; Sha256=(Get-FileHash $packagePath).Hash;
-    ContentVerified=$true; CleanInstall=$true; Capabilities=$true; PlanCreated=$true; PlanVerified=$true; ToolDirectory=$toolPath }
+    ContentVerified=$true; CleanInstall=$true; GuideVerified=$true; Capabilities=$true; PlanCreated=$true; PlanVerified=$true; ToolDirectory=$toolPath }
 $summary | ConvertTo-Json | Set-Content (Join-Path $output 'summary.json') -Encoding utf8
 $summary

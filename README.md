@@ -49,3 +49,16 @@ The project is licensed under the [MIT License](LICENSE). Dependencies retain th
 Tell the AI assistant in your environment which application behavior you want to test and provide the deployed binary, matching source/Portable PDB and execution environment. The assistant uses the CLI to identify and verify a call site, selects supported conditions and faults, and returns one verified JSON plan with the expected observations.
 
 Use the [AI planning guide and copyable request](src/Tool/AI-plan-guide.md). Plan verification and successful fault injection are separate results.
+
+## Start with the guide
+
+Ask your AI assistant to run `dotnet-fault-injection guide` and read the output before creating a plan. The guide explains the tool, supported workflow, required inputs and verification boundaries. It is embedded in the installed CLI and works offline.
+
+With a repository checkout, the assistant can instead read `src/Tool/AI-plan-guide.md`. The CLI embeds that same file at build time.
+
+```text
+First run dotnet-fault-injection guide and read its output.
+Alternatively, read src/Tool/AI-plan-guide.md in this repository checkout.
+Follow the guide to create and verify a plan for the target and test objective I provide.
+If the guide is unavailable, report that before proceeding.
+```
