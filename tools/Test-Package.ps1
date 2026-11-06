@@ -46,7 +46,7 @@ try {
     & dotnet tool install $id --version $version --tool-path $toolPath --configfile (Join-Path $output 'NuGet.Config')
     if ($LASTEXITCODE -ne 0) { throw 'Clean tool installation failed.' }
 } finally { $env:NUGET_PACKAGES = $originalCache }
-$installedArchive = @(Get-ChildItem -LiteralPath $toolPath -Recurse -File -Filter "$($id.ToLowerInvariant()).$version.nupkg")
+$installedArchive = @(Get-ChildItem -LiteralPath $toolPath -Force -Recurse -File -Filter "$($id.ToLowerInvariant()).$version.nupkg")
 if ($installedArchive.Count -ne 1 -or (Get-FileHash $installedArchive[0].FullName).Hash -ne (Get-FileHash $packagePath).Hash) {
     throw 'The package fetched from the selected feed differs from the tested package.'
 }
