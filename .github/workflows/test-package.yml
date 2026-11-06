@@ -71,19 +71,8 @@ jobs:
           $version = "0.1.0-github.${env:GITHUB_RUN_ID}.${env:GITHUB_RUN_ATTEMPT}"
           "TEST_PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
           "version=$version" >> $env:GITHUB_OUTPUT
-          ./tools/Pack.ps1 -Version $version
+          ./tools/Pack.ps1 -Version $version -CandidateOnly
           ./tools/Test-Package.ps1 -Package "./artifacts/packages/DotNetFaultInjectionAgent.Tool.$version.nupkg"
-      - name: Publish to GitHub Packages
-        env:
-          PACKAGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          dotnet nuget push "./artifacts/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" --source https://nuget.pkg.github.com/synthaicode/index.json --api-key $env:PACKAGE_TOKEN --timeout 120
-          if ($LASTEXITCODE -ne 0) { throw 'GitHub Packages publish failed.' }
-      - name: Fetch from GitHub Packages and verify execution
-        env:
-          NuGetPackageSourceCredentials_packagefeed: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
-        run: |
-          ./tools/Test-Package.ps1 -Package "./artifacts/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl https://nuget.pkg.github.com/synthaicode/index.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -95,8 +84,81 @@ jobs:
             artifacts/runtime/*/manifest.json
           if-no-files-found: warn
 
-  linux-consumer:
+  scan-and-publish:
     needs: windows-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-verification
+          path: artifacts/github-published
+      - name: Update virus definitions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam
+      - name: Scan archive and extracted payload before publication
+        shell: pwsh
+        env:
+          TEST_PACKAGE_VERSION: ${{ needs.windows-package.outputs.version }}
+        run: |
+          ./tools/Scan-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg"
+      - name: Publish scanned package to GitHub Packages
+        shell: pwsh
+        env:
+          TEST_PACKAGE_VERSION: ${{ needs.windows-package.outputs.version }}
+          PACKAGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $package = "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg"
+          $scan = Get-Content -Raw (Get-ChildItem artifacts/package-scans -Filter summary.json -Recurse | Select-Object -First 1).FullName | ConvertFrom-Json
+          if ($scan.Result -ne 'passed' -or $scan.Sha256 -ne (Get-FileHash $package).Hash) { throw 'Missing or mismatched virus scan.' }
+          dotnet nuget push $package --source https://nuget.pkg.github.com/synthaicode/index.json --api-key $env:PACKAGE_TOKEN --timeout 120
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Packages publish failed.' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-virus-scan
+          path: |
+            artifacts/package-scans/*/summary.json
+            artifacts/package-scans/*/scan.log
+
+  windows-consumer:
+    needs: [windows-package, scan-and-publish]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-verification
+          path: artifacts/github-published
+      - name: Fetch scanned package and verify Windows execution
+        shell: pwsh
+        env:
+          TEST_PACKAGE_VERSION: ${{ needs.windows-package.outputs.version }}
+          NuGetPackageSourceCredentials_packagefeed: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+        run: |
+          ./tools/Test-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl https://nuget.pkg.github.com/synthaicode/index.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-consumer-verification
+          path: |
+            artifacts/package-tests/*/summary.json
+            artifacts/package-tests/*/*-result.json
+
+  linux-consumer:
+    needs: [windows-package, scan-and-publish]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
