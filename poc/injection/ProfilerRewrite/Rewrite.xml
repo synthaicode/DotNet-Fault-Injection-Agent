@@ -1,0 +1,9 @@
+<InstrumentationEngineConfiguration>
+  <InstrumentationMethod>
+    <Name>Windows Chaos Agent test rewrite</Name>
+    <Description>Rewrite the fixed profiler test target</Description>
+    <Module>Rewrite.dll</Module>
+    <ClassGuid>{9F919AFE-C6F4-4263-A112-8DEC9947BC1E}</ClassGuid>
+    <Priority>50</Priority>
+  </InstrumentationMethod>
+</InstrumentationEngineConfiguration>

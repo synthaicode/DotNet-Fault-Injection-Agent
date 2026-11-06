@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+.tools/
+poc/scenarios/PlanDrivenInjection/artifacts/
+/samples/*/target/
+/samples/*/reference/
+/samples/*/tools/
+/samples/*/plan.json
+/samples/*/evidence/
