@@ -1,23 +1,19 @@
-# 共有フラグを読む順序を確認するサンプル
+# Observe shared-flag read order
 
-フラグを読む時点と書く時点の順序を固定し、読み直した結果を比べます。
-このサンプルは観測用で、障害注入は行いません。
+## Target
 
-## 対象プログラム
+SyncService uses ordinary and volatile fields and runs the same logic as a console program or dedicated Windows service. This sample observes behavior without fault injection.
 
-対象は `target` の SyncService です。通常のフィールドとvolatileフィールドを使い、
-コンソールと専用Windowsサービスで同じ処理を実行します。
+## Plan or intervention
 
-## この試験で行うこと
+The reader reads first, the writer then publishes true, and the reader waits for the writer with Join before checking again. No injection plan, profiler or Rewrite.dll is used.
 
-読む側が先にフラグを読み、その後に書く側がtrueを書き込みます。
-書く側の終了をJoinで待ってから、読む側がもう一度確認します。
-注入計画、プロファイラー、Rewrite.dllは使いません。
+## Expected observations
 
-## 期待する結果
+Both fields read false initially and true after Join. Volatile does not make a one-time read before publication observe a later write.
 
-どちらのフィールドでも、最初はfalse、Join後の再確認ではtrueになります。
-volatileを付けても、書き込み前に一回読んだだけでは後の変更は拾えません。
+## Environment and limits
 
-Windows / .NET Framework 4.8用です。
-Joinを使わないポーリング時のメモリ可視性は、この試験では判定しません。
+Windows / .NET Framework 4.8. This test does not determine memory visibility when polling without Join.
+
+See [preparation and execution](../OPERATIONS.md).

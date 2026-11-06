@@ -11,6 +11,7 @@
     <Version>0.1.0-preview.4</Version>
     <Description>DotNet Fault Injection Agent source analysis and injection plan verification.</Description>
     <Authors>synthaicode</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/synthaicode/DotNet-Fault-Injection-Agent</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -18,6 +19,8 @@
     <PackageTags>dotnet;fault-injection;testing</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <None Update="AI-plan-guide.md" Pack="true" PackagePath="/AI-plan-guide.md" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
     <None Include="../../docs/packaging/nuget-readme.md" Pack="true" PackagePath="/README.md" />
     <None Include="../../schemas/injection-plan.v3.schema.json" Pack="true" PackagePath="schemas/" />
     <ProjectReference Include="../Planner/Planner.csproj" />

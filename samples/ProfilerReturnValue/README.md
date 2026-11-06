@@ -1,20 +1,19 @@
-# 戻り値を書き換えるサンプル
+# Rewrite a fixed return value
 
-プロファイラーが対象に読み込まれ、実行中のILを書き換えられるかを確認します。
+## Target
 
-## 対象プログラム
+ProfilerTarget prints the value returned by GetValue, normally 42.
 
-対象は `target` の ProfilerTarget です。GetValue が返した値を表示します。
-通常は `42` を返します。
+## Plan or intervention
 
-## この試験で行う書換え
+The shared Rewrite extension rewrites the initial instructions of fixed method Program.GetValue. This early PoC uses no plan.json.
 
-共有のRewrite拡張が、固定指定した Program.GetValue の先頭命令を書き換えます。
-この初期PoCは `plan.json` を使いません。JSONで注入条件を選ぶサンプルとは分けて扱います。
+## Expected observations
 
-## 期待する結果
+Without profiling: 42; with the extension: -1; without profiling again: 42. The deployed EXE stays unchanged; only running IL changes.
 
-プロファイラーなしでは `42`、拡張ありでは `-1`、再びプロファイラーなしでは `42` を表示します。
-配布EXEの内容は変えず、実行中の書換えだけで値が変わります。
+## Environment and limits
 
-Windows x64 / .NET Framework 4.8用です。
+Windows x64 / .NET Framework 4.8.
+
+See [preparation and execution](../OPERATIONS.md).

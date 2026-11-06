@@ -1,0 +1,16 @@
+Generation mode: built-in image_gen edit
+Target: dotnet-fault-injection-agent-overview-en.png
+
+Translate the previous infographic into English, preserving the product title and visual style.
+Subtitle: Turn hard-to-reproduce failures into repeatable tests.
+Roles: User; Your AI assistant; DotNet Fault Injection Agent; Target application.
+Actions: Describe what to test; Inspect the target and create a plan; Inject planned exceptions and delays; Observe behavior and results.
+Plan document: Injection plan JSON.
+Columns: Testing challenge; Injected condition; What to verify.
+Rows:
+Hard-to-test error handling; Fail one file write; Exception handling and continuation.
+Unclear failure notifications; Throw before SQL send; Worker state, notifications and logs.
+Rare completion order; Delay the first operation; Counts and shared state.
+Footer: Record conditions in a plan; Repeat the same test; Compare results.
+Scope: Supported features vary by sample.
+Use legible, uncut English text. Do not imply embedded AI, automatic correctness judgments, arbitrary return-value control or universal compatibility.

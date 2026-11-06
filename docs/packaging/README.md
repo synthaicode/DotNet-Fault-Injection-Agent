@@ -1,18 +1,16 @@
-# NuGet公開の準備
+# NuGet release preparation
 
-## フォルダと公開対象
+## Distribution scope
 
-実装は `src/`、検証対象・ホスト・自動試験は `tests/`、利用者向け説明は `samples/`、計画JSONの形式は `schemas/`、ビルド・配置・検証の入口は `tools/` に置きます。生成パッケージとパッケージ検証出力はGit管理外の `artifacts/` に置きます。
+Implementation lives in `src/`, verification fixtures and hosts in `tests/`, user examples in `samples/`, plan formats in `schemas/`, and scripts in `tools/`. Generated packages and package-test output are stored under the ignored `artifacts/` directory.
 
-現在の公開対象は `src/Tool/SourceMap.csproj` が作る `DotNetFaultInjectionAgent.Tool` 一つです。
-`Directory.Build.props` で全プロジェクトのpackを既定で無効にし、Toolだけで有効にしています。
-PlannerはCLIの依存DLLとして同梱されます。Runtime・ネイティブ拡張・テストプログラムを個別NuGetパッケージとして公開する設定はありません。
+The publishable project is `src/Tool/SourceMap.csproj`, producing `DotNetFaultInjectionAgent.Tool`. `Directory.Build.props` disables packing by default; only Tool enables it. Planner is included as a CLI dependency. Runtime, native extensions and test programs are not separately configured for NuGet publication.
 
-CLIパッケージには、Tool、Planner、必要なRoslyn等の依存DLL、NuGet用README、version 3スキーマを含めます。プロファイラーエンジン・注入用Runtime・ネイティブDLL/SO・検証対象は含めません。CLIのインストールだけでは障害注入を実行できません。
+The package includes the CLI, Planner, required managed dependencies including Roslyn, an English README, the AI planning guide, MIT license text and version 3 schema. The profiler engine, injection Runtime and native DLL/SO files are deployed separately. Installing the CLI alone does not enable injection.
 
-## ビルドとパッケージ検証
+## Build and verify
 
-.NET 10 SDKとPowerShell 7を使用し、リポジトリのルートで実行します。
+Use .NET 10 SDK and PowerShell 7 from the repository root:
 
 ```powershell
 dotnet build DotNetFaultInjectionAgent.slnx -c Release
@@ -20,19 +18,16 @@ dotnet build DotNetFaultInjectionAgent.slnx -c Release
 ./tools/Test-Package.ps1 -Package ./artifacts/packages/DotNetFaultInjectionAgent.Tool.0.1.0-preview.4.nupkg
 ```
 
-バージョンを明示する場合は `./tools/Pack.ps1 -Version <version>` を使います。
-Test-Packageは新しい検証ディレクトリとパッケージキャッシュを作り、指定したnupkgだけをインストール元に使います。既存のグローバルツールを変更しません。
+Use `./tools/Pack.ps1 -Version <version>` to select a version. Test-Package installs only the specified package into a new tool directory using an empty package cache and a local-only feed. Existing global tools are not changed.
 
-パッケージメタデータはToolのcsproj、パッケージ内READMEは [nuget-readme.md](nuget-readme.md) が正本です。
-スキーマは [schemas/injection-plan.v3.schema.json](../../schemas/injection-plan.v3.schema.json) が正本です。
+Package metadata is maintained in the Tool csproj. The package README is [nuget-readme.md](nuget-readme.md), and the schema is [injection-plan.v3.schema.json](../../schemas/injection-plan.v3.schema.json).
 
-## 公開前の未決事項
+## Before publication
 
-- ライセンスの指定がありません。ライセンス方針を決定し、リポジトリのLICENSEとパッケージのlicenseメタデータへ反映する必要があります。今回の構成整理ではライセンスを選択していません。
-- NuGet.orgのパッケージID使用権限、公開アカウント・認証、公開バージョンは実際の公開前に確認します。
-- 現在のGitHubリポジトリは非公開です。公開NuGetの利用者に示すドキュメントの閲覧先を決める必要があります。
-- ネイティブエンジンを含む配布を追加する場合は、その配布範囲・依存物・署名・ライセンスを別途確認します。
+The project uses the [MIT License](../../LICENSE), also declared through NuGet's SPDX license metadata. Dependencies retain their own licenses.
 
-この手順はパッケージ作成とローカル検証までです。NuGet.orgへのpushは行いません。
+Confirm the publication version, ownership of the NuGet.org package ID and publishing credentials. The GitHub repository is currently private: decide where package users can read the linked documentation. Any future distribution including native engines requires a separate review of that distribution's dependencies, signatures and licenses.
 
-設定の参照: [Microsoftの.NET tool作成手順](https://learn.microsoft.com/en-us/dotnet/core/tools/global-tools-how-to-create)、[NuGetのpackメタデータ](https://learn.microsoft.com/en-us/nuget/reference/msbuild-targets)。
+Build release packages from the selected source revision and rerun package verification. The preparation scripts do not push to NuGet.org.
+
+References: [Microsoft .NET tool tutorial](https://learn.microsoft.com/en-us/dotnet/core/tools/global-tools-how-to-create), [NuGet pack metadata](https://learn.microsoft.com/en-us/nuget/reference/msbuild-targets).

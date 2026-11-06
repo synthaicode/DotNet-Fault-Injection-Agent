@@ -1,41 +1,16 @@
-# 類似ツールの訴求とREADMEへの反映
+# Related-tool positioning and README structure
 
-## 調べたこと
+This historical research compared official descriptions, not measured product effectiveness.
 
-ランタイムの呼び出しを置き換えるツールが、実装技術ではなく利用者への価値をどう説明しているかを確認した。
-以下は公式の製品ページと技術資料に基づく整理であり、各製品の効果を実測比較したものではない。
+| Tool | Value emphasized | Technical context | Sources |
+| --- | --- | --- | --- |
+| Telerik JustMock | Control DB/web dependencies and test existing code, including static/nonvirtual methods | Official documentation describes .NET Profiling API for advanced commercial mocking | [Introduction](https://www.telerik.com/products/justmock/documentation/introduction), [advanced usage](https://www.telerik.com/products/justmock/documentation/advanced-usage/advanced-usage) |
+| Byteman | Change runtime behavior without recompiling; repeat exceptions, synthetic results and rare timing | Java runtime bytecode rewriting, not the same implementation as a .NET profiler | [Official site](https://byteman.jboss.org/) |
+| Typemock Isolator | Test legacy code without changing it and control static/nonpublic dependencies | Product messaging was reviewed; current internal APIs were not verified and are not evidence for a profiler implementation | [Product](https://www.typemock.com/isolator-product-page/) |
+| Microsoft Dev Proxy | Observe application behavior when APIs fail or delay | HTTP proxy; an example of scenario communication, not a profiler comparison | [Overview](https://learn.microsoft.com/en-us/microsoft-cloud/dev/dev-proxy/overview) |
 
-| ツール | 公式説明で前に出している価値 | 技術的な位置づけ | 参照先 |
-|---|---|---|---|
-| Telerik JustMock | DBやWebサービスなどの依存先を制御し、既存コードでも単体テストを行いやすくする。静的・非仮想メソッドなども対象にできる | 商用版の高度なモック機能で.NET Profiling APIを使うことを公式文書で確認 | [製品紹介](https://www.telerik.com/products/justmock/documentation/introduction)、[実装方式の説明](https://www.telerik.com/products/justmock/documentation/advanced-usage/advanced-usage) |
-| Byteman | アプリケーションの再コンパイルなしで挙動を変え、例外や合成した結果、まれなタイミングを繰り返し試験できる | Javaの実行時バイトコード書換え。.NETのプロファイラーと同一の実装方式ではない | [公式紹介](https://byteman.jboss.org/) |
-| Typemock Isolator | レガシーコードも変更せずにテストでき、静的メソッドや非公開の依存先も制御できる | 今回は現行製品ページの訴求を確認。現行版の内部APIまでは確認していないため、プロファイラー実装の根拠には使わない | [公式製品ページ](https://www.typemock.com/isolator-product-page/) |
-| Microsoft Dev Proxy | APIが失敗・遅延したときのアプリの振る舞いを、通常のアプリ利用を通して確認できる | HTTP通信を仲介する方式。プロファイラー方式の比較対象ではなく、利用場面の説明の参考 | [公式紹介](https://learn.microsoft.com/en-us/microsoft-cloud/dev/dev-proxy/overview) |
+Our interpretation: explain what hard-to-control dependencies or timing can be tested before describing implementation APIs. Follow with reproducibility, examples, implementation and scope. JustMock emphasizes isolated unit tests; Byteman emphasizes runtime changes and repeatability. Their purposes are not interchangeable.
 
-## 説明から読み取れる傾向
+Position this project as a tool that creates difficult .NET failures/delays at selected sites and conditions for repeatable failure-behavior tests. README order: testing problem, injected condition, observable behavior, target/plan/tool roles, supported scope and samples.
 
-次は、上記の説明を比較したうえでの解釈である。
-
-最初に伝えているのは、どのAPIで実装したかではなく、従来制御しにくかった依存処理やタイミングを制御し、何を検証できるようにするかである。
-その後に、再現の方法、具体例、実装方式、対応範囲が続く。
-JustMockは依存先から切り離した単体テスト、Bytemanは実行時の振る舞い変更と再現性を強く説明している。
-両者を同じ用途とみなすのではなく、実現できる検証を先に示す説明順を参考にする。
-
-## DotNet Fault Injection Agentの説明方針
-
-「.NETプログラムで再現しにくい失敗や処理の遅れを、指定した箇所と条件で起こし、障害時の動作を繰り返し検証するツール」と位置づける。
-
-READMEは次の順序で説明する。
-
-1. 正常時だけの試験では確かめにくいこと。
-2. このツールで作れる障害条件。
-3. その条件で確認できるアプリの動作。
-4. 対象、計画、注入ツールの関係。
-5. 現在の対応範囲と具体的なサンプル。
-
-## そのまま取り込まない訴求
-
-既存製品の宣伝文句を、このPoCの性能や対応範囲の保証には使わない。
-「任意のAPIの戻り値を自由に変えられる」「すべての既存バイナリをソース不要で検証できる」とは説明しない。
-現在の実装は例外と遅延の注入が中心で、Windowsの専用試験には対象内のヘルパーを使うものがある。
-対象にヘルパーへの参照を追加しない汎用計画方式の動作検証範囲は、Linux x64 / .NET 8である。
+Do not borrow other products' claims as guarantees of this PoC. Do not imply arbitrary return-value editing or source-free support for every binary. Current work focuses on exceptions/delays; some dedicated Windows samples use target-side helpers. Helper-reference-free generic injection has been tested on Linux x64/.NET 8.

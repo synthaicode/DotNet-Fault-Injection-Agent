@@ -1,24 +1,19 @@
-# SQL送信を一回だけ失敗させるサンプル
+# Fail one SQL send
 
-選んだSQL呼び出しに対して、送信前に TimeoutException を一回起こします。
-例外が起きた呼び出しで、DBへの書き込みが行われないことを確認します。
+## Target
 
-## 対象プログラム
+SqlTarget connects to LocalDB and creates a temporary table and procedure. It invokes the selected site, another site and another procedure.
 
-対象は `target` の SqlTarget です。LocalDBに接続し、一時テーブルと一時プロシージャを作ります。
-選んだ箇所、別の箇所、別のプロシージャを使って呼び出しを行います。
+## Plan or intervention
 
-## この計画で行う注入
+The plan selects ExecuteNonQuery in Program.Selected. server is the test LocalDB, database is tempdb, procedure is #ConfirmOrder, fault is timeout-before-send, and maxFirings is 1.
 
-`plan.json` は Program.Selected 内の ExecuteNonQuery を選びます。
-`server` は検証用LocalDB、`database` は `tempdb`、`procedure` は `#ConfirmOrder` です。
-この条件に一致した呼び出しで、送信する前に TimeoutException を投げます。
-`fault` は `timeout-before-send`、`maxFirings` は `1` です。
+## Expected observations
 
-## 期待する結果
+Only the first matching selected call throws TimeoutException before sending SQL. Another site, another procedure and a second matching call succeed. DB rows decrease from the baseline 4 to 3.
 
-選んだ箇所の最初の一致だけが失敗します。別の箇所と別のプロシージャは成功します。
-一致する二回目の呼び出しも成功し、DBの記録行数は通常の4件から3件になります。
+## Environment and limits
 
-Windows x64 / .NET Framework 4.8とLocalDBが必要です。
-この障害は送信前の例外です。DBで処理した後に応答を失う障害とは分けて扱います。
+Windows x64 / .NET Framework 4.8 / LocalDB. Failure before send is distinct from losing a response after database processing.
+
+See [preparation and execution](../OPERATIONS.md).

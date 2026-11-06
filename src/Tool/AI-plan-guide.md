@@ -1,40 +1,65 @@
-# 利用者の環境のAIによる注入計画の作成
+# Ask your AI assistant to create an injection plan
 
-利用者は、自分の環境で使っているAIに、対象プログラムと確かめたいことを伝えます。
-AIは計画作成ツールを使って対象を照合し、実行に使う一つの注入計画JSONを用意します。
-このガイドは、そのときの役割と確認事項を説明します。
+Use the AI assistant in your own development environment to inspect the application and run `dotnet-fault-injection`. The CLI performs binary/source/PDB checks; the AI selects a supported test that answers your question. The tool does not contain an embedded AI service.
 
-## 利用者が伝えること
+## Give the assistant the required inputs
 
-対象プログラムと、どの処理の、どんな失敗や遅れを試したいかを伝えます。
-たとえば「注文投入が一回失敗したとき、ワーカーが止まり、画面にエラーが伝わるかを確かめたい」と依頼します。
+Provide the deployed EXE or DLL, its matching Portable PDB, the corresponding source, the execution OS and .NET version, and the behavior you want to observe. Identify the non-production environment, relevant connection or file conditions, the fault, and the maximum number of firings. Values determined only at runtime must remain explicit unknowns until checked.
 
-接続先やファイルパスなど、発火を絞る条件も分かる範囲で伝えます。
-実行時にしか決まらない値は、ソースから確定した値として扱いません。
+For example, ask whether a single failed order submission stops the worker and reaches the UI, or whether delaying an earlier operation causes incorrect shared counts.
 
-## AIが行うこと
+## Copyable request
 
-AIは対象の処理と例外処理を調べ、目的に合う注入箇所、条件、障害、回数を整理します。
-複数の候補を区別できない場合は、選択に必要な情報を確認します。
+Replace the bracketed inputs with actual paths and test conditions:
 
-次に、対象バイナリ、対応するソース、Portable PDBを計画作成ツールへ渡します。
-ツールで呼び出し箇所を照合し、対象の識別情報と命令位置を含む計画を生成します。
-AIは利用者の目的に合わせて条件を設定し、ツールでもう一度検証して保存します。
+```text
+Create and verify one injection plan for this application using DotNet Fault Injection Agent.
 
-ハッシュ、MVID、メソッドトークン、IL位置はツールの照合結果を使います。
-AIが推測した値で埋めたり、照合エラーを通すために変更したりしません。
-対応していない障害を指定された場合は、その制約を伝えます。
+Target binary: [absolute EXE or DLL path]
+Matching Portable PDB: [path]
+Matching source: [path]
+Execution environment: [OS, architecture and .NET version]
+Test environment: [isolated test deployment]
+Question: [application behavior to check]
+Requested fault: [exception or bounded delay]
+Conditions: [environment values, file/connection conditions supported by this plan version]
+Firing limit: [count]
+Output plan: [absolute JSON path]
 
-## 利用者へ渡すもの
+Inspect the relevant processing and exception-handling paths. Check supported capabilities
+before choosing a plan version. Identify the call site with the CLI and generate the plan
+from the actual binary, matching PDB and source. Do not invent hashes, MVIDs, tokens or IL offsets.
+Set only supported conditions and faults, then verify the final JSON with the CLI.
+If a call site is ambiguous or a required value is unknown, explain what is needed.
+Return the verified JSON, the chosen call site and reason, conditions, fault, firing limit,
+expected observations and verification output. Distinguish plan verification from an
+executed injection test. Use this same JSON for execution.
+```
 
-実行に使う注入計画JSONと、その対象、注入箇所、発火条件、障害、期待する結果を説明します。
-作成用と実行用で別の定義を持たず、検証した同じ計画を実行に使います。
+## Planning workflow
 
-計画の作成・検証が済んだことと、実際に障害を起こして動作を確認したことは分けて伝えます。
-対象バイナリが更新された場合は、新しい配布物で計画を作り直します。
+1. Inspect the application's normal path, exception handling, recovery and externally visible state. Treat a static finding as a hypothesis to test.
+2. Check capabilities and choose a supported runtime/plan version. Windows dedicated PoCs use version 1/2; generic Linux x64 / .NET 8 injection uses version 3.
+3. List candidate calls with the CLI. Resolve ambiguous candidates before generating a plan.
+4. Generate a plan from the actual target binary, matching source and Portable PDB. Keep generated identity and call-site fields unchanged.
+5. Set the requested rule ID, deployment path, supported conditions, fault and firing limit. Verify the final saved JSON again.
+6. Explain what the plan proves when executed, and what must be observed in the application and external systems. Recreate and verify the plan when the target binary changes.
 
-## 形式ごとの対応範囲
+For version 3, use these commands with real paths and the selected source line:
 
-Windowsの専用PoCはversion 1/2、Linuxの汎用計画PoCはversion 3を使います。
-使える条件、障害、実行環境は [サンプル一覧](../../samples/README.md) にあります。
-具体的なコマンドと形式上の制約は [開発用の説明](DEVELOPMENT.md) を参照してください。
+```text
+dotnet-fault-injection v3 capabilities
+dotnet-fault-injection v3 list target.dll Program.cs 22
+dotnet-fault-injection v3 plan target.dll Program.cs 22 plan.json
+dotnet-fault-injection v3 verify target.dll Program.cs 22 plan.json
+```
+
+Version 3 supports environment equality, starting invocation and an atomic firing budget. Faults are supported synchronous exceptions or a bounded synchronous delay before a selected external call. It does not support argument/business-object matching, arbitrary exception construction or faulted Task injection. Do not translate a requested unsupported condition into an apparently equivalent supported condition without explaining the difference.
+
+## Hand off one executable plan
+
+Return one verified JSON together with the target identity, call site, conditions, fault, firing limit and expected observations. Keep source/project/build details as planning context rather than adding them as execution-plan fields.
+
+Plan verification checks the binding and format; it does not show that injection fired or that the application recovered correctly. During execution, distinguish plan acceptance, IL rewriting and actual firing. Check application logs, notifications, retry behavior and database/file state separately. A pre-send exception does not simulate losing a response after a committed database write.
+
+See the [sample matrix](../../samples/README.md) and [command and format details](DEVELOPMENT.md). The native profiler engine, extension and runtime must be deployed separately from the planning CLI.
