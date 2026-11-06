@@ -1,4 +1,33 @@
-# DotNet Fault Injection Agent — planning tool
+# DotNet Fault Injection Agent — planning and Windows execution
+
+## Download and use the bundled Windows runtime
+
+After this package is published to NuGet.org, install the .NET tool and export the execution files:
+
+```powershell
+dotnet tool install --global DotNetFaultInjectionAgent.Tool --prerelease
+dotnet-fault-injection guide
+dotnet-fault-injection runtime list
+dotnet-fault-injection runtime export --output ./fault-runtime
+```
+
+Before publication, use the same installation command with `--add-source <local-package-directory>` and `--version 0.1.0-preview.4` instead of `--prerelease`. The download/export workflow is validated against a locally built NuGet package; this documentation does not imply NuGet.org publication has occurred.
+
+`fault-runtime` must be a new directory. Export verifies the payload checksums and does not replace an existing directory. It contains the Windows x64 Engine, Rewrite.dll, Rewrite.xml, Invoke-FaultInjection.ps1, provenance/checksum manifest and dependency license notices. No native compilation or repository checkout is required on the user's machine.
+
+Windows prerequisites are .NET 10 for the CLI, PowerShell 7 for execution, and the runtime required by the target application. The included native binaries have system DLL dependencies only in the inspected build. Keep the exported files together.
+
+Create and verify a plan for the actual supported Windows target, then launch from PowerShell 7:
+
+```powershell
+./fault-runtime/Invoke-FaultInjection.ps1 -Target C:/test/SqlTarget.exe -Plan C:/test/plan.json
+```
+
+For the .NET CoreFileTarget fixture, provide its apphost EXE to Target and bind the plan to its matching managed DLL. Pass the planned destination path through `-TargetArguments`. The launcher selects COR_* for Framework or CORECLR_* for the dedicated CoreCLR fixture and supplies the bundled Engine/config/extension. Check PlanAccepted, IlRewritten, Firings, BinaryUnchanged and the application result.
+
+The Windows payload supports the existing dedicated Framework/CoreCLR fixtures and order host; bundling does not add support for arbitrary application binaries. It uses an unsigned extension with signature-validation bypass limited to the test child process. Services require their own service configuration; exporting does not register a service.
+
+Only win-x64 execution assets are bundled in this release candidate. Generic Linux/.NET planning remains supported, but Linux execution assets are not included in this payload and use the separate developer deployment instructions.
 
 `DotNetFaultInjectionAgent.Tool` creates and verifies fault-injection plans by checking the target binary, matching source and Portable PDB. It exposes the `dotnet-fault-injection` command and requires .NET 10.
 
@@ -11,7 +40,7 @@ dotnet-fault-injection dotnet verify target.dll Program.cs 22 plan.json
 
 Version 3 plans support selected external call sites, environment conditions, firing limits, synchronous exceptions and delays. The generic injection runtime has been tested on Linux x64 / .NET 8.
 
-This package contains the planning CLI and its managed dependencies. It does not contain the native profiler engine, native injection extensions, or a ready-to-run injection deployment. Those are built and deployed separately; installing this tool alone does not enable fault injection.
+This package contains the planning CLI, its managed dependencies and a bundled Windows x64 Engine/extension/launcher deployment. Export the payload as described below; users do not build native components.
 
 The version 3 schema is included under `schemas/`. The repository documents the dedicated Windows version 1/2 samples and the generic Linux version 3 runtime.
 
@@ -21,7 +50,7 @@ The version 3 schema is included under `schemas/`. The repository documents the 
 
 Ask your development-environment AI assistant to create a plan using this CLI. Supply the deployed binary, matching source and Portable PDB, runtime environment, test question, requested fault, conditions and firing limit. Have it inspect capabilities, list call sites, generate the JSON and verify the final file. Identity fields must come from the tool, not guesses. A verified plan is not evidence of a successful injection run.
 
-The package includes `AI-plan-guide.md`, with a copyable request and planning workflow. Use the same verified JSON for execution with the separately deployed injection runtime.
+The package includes `AI-plan-guide.md`, with a copyable request and planning workflow. Use the same verified JSON for execution with the exported Windows runtime.
 
 ## Start with the guide
 

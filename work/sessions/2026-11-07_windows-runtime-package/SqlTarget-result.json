@@ -1,0 +1,12 @@
+{
+  "Target": "C:\\dev\\dotnet-fault-injection-agent-rename\\tests\\Fixtures\\SqlTarget\\bin\\Release\\net48\\SqlTarget.exe",
+  "Plan": "C:\\dev\\dotnet-fault-injection-agent-rename\\artifacts\\package-tests\\a80a7c94d69b4b22a5a722b6815d9682\\SqlTarget-plan.json",
+  "ExitCode": 0,
+  "PlanAccepted": true,
+  "PlanRejected": false,
+  "IlRewritten": true,
+  "Firings": 1,
+  "BinaryUnchanged": true,
+  "Output": "attempt=1 IOException: Injected before File.WriteAllText.\r\nattempt=1 exists=False\r\nattempt=2 success\r\nattempt=2 exists=True",
+  "Diagnostics": "plan accepted: 1 rule(s) validated\r\nIL rewritten: methodToken=100663304\r\nfault fired: methodToken=100663304 io-error-before-write"
+}

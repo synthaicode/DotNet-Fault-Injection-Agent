@@ -5,10 +5,14 @@ param(
     [string] $Plan,
     [string] $PlanTarget,
     [string[]] $TargetArguments = @(),
-    [string] $RuntimeDirectory = "$PSScriptRoot/../src/Native/Windows/bin",
+    [string] $RuntimeDirectory,
     [ValidateRange(1, 3600)][int] $TimeoutSeconds = 30
 )
 $ErrorActionPreference = 'Stop'
+if (-not $RuntimeDirectory) {
+    $RuntimeDirectory = if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'Rewrite.dll')) { $PSScriptRoot }
+        else { Join-Path $PSScriptRoot '../src/Native/Windows/bin' }
+}
 if (-not $IsWindows) { throw 'This launcher supports Windows x64 targets.' }
 $targetPath = (Resolve-Path -LiteralPath $Target).ProviderPath
 if ([IO.Path]::GetExtension($targetPath) -ine '.exe') { throw 'Target must be an executable.' }

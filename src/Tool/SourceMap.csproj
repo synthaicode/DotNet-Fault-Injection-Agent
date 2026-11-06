@@ -9,16 +9,19 @@
     <PackageId>DotNetFaultInjectionAgent.Tool</PackageId>
     <ToolCommandName>dotnet-fault-injection</ToolCommandName>
     <Version>0.1.0-preview.4</Version>
-    <Description>DotNet Fault Injection Agent source analysis and injection plan verification.</Description>
+    <Description>DotNet Fault Injection Agent planning CLI and bundled Windows x64 execution tools.</Description>
     <Authors>synthaicode</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/synthaicode/DotNet-Fault-Injection-Agent</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/synthaicode/DotNet-Fault-Injection-Agent</PackageProjectUrl>
+    <!-- The .NET tool exports this script explicitly; it is not a NuGet install.ps1 hook. -->
+    <NoWarn>$(NoWarn);NU5111</NoWarn>
     <PackageTags>dotnet;fault-injection;testing</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../../artifacts/runtime/win-x64/*" Link="runtime/win-x64/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Pack="false" />
     <EmbeddedResource Include="AI-plan-guide.md" LogicalName="DotNetFaultInjectionAgent.AI-plan-guide.md" />
     <None Update="AI-plan-guide.md" Pack="true" PackagePath="/AI-plan-guide.md" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
@@ -28,4 +31,7 @@
     <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll" />
     <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll" />
   </ItemGroup>
+  <Target Name="RequireWindowsRuntime" BeforeTargets="GenerateNuspec">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)/../../artifacts/runtime/win-x64/manifest.json')" Text="Build and stage the Windows runtime with tools/Stage-WindowsRuntime.ps1 before packing." />
+  </Target>
 </Project>

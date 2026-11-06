@@ -9,12 +9,15 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
+if (args.Length > 0 && args[0] == "runtime") return RuntimeBundle.Run(args.Skip(1).ToArray());
+
 if (args.Length == 0 || args[0] is "--help" or "-h" or "help")
 {
     Console.WriteLine("DotNet Fault Injection Agent — injection planning CLI");
     Console.WriteLine("Start here: dotnet-fault-injection guide");
     Console.WriteLine("Identify the target runtime and OS before generating a plan.");
     Console.WriteLine("Commands: guide | capabilities | dotnet list/plan/verify | windows-fixture list/recommend/plan/verify");
+    Console.WriteLine("Bundled Windows execution: runtime export --output <new-directory>");
     Console.WriteLine("dotnet: generic Linux x64/.NET 8 injection; windows-fixture: dedicated Windows Framework/CoreCLR samples.");
     return 0;
 }
