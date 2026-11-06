@@ -11,3 +11,9 @@ The GitHub Packages workflow now builds/transfers the Linux payload, publishes t
 Scope: Linux x64 glibc, Debian 12 build and .NET 8 target, OpenSSL 3, libstdc++. CLI requires .NET 10. Alpine/musl, ARM64, macOS and all Linux distributions are not claimed. No NuGet.org publication.
 
 Added required virus scanning at the user's request: local Windows package creation uses updated Defender; Actions updates ClamAV and scans both archive/extracted contents before publication, records the package hash and blocks publication on errors/detections/stale definitions. Remote results pending. Replaced host-specific SDK Roslyn assemblies with the portable Microsoft.CodeAnalysis.CSharp 5.0.0 package after Linux feed verification exposed BadImageFormatException. Fresh-output package now starts/exports on Linux; Windows fixture tests passed.
+
+## Completed GitHub Packages verification
+
+Actions run https://github.com/synthaicode/DotNet-Fault-Injection-Agent/actions/runs/42310261508 succeeded in all five jobs at code revision 5fb7da1. Test version 0.1.0-github.42310261508.1 has SHA-256 6F051AAE47D9C8A9141CC58DBA3EE9D35342F4A2E6C1E58C3D1EF9841CE273CB. Fresh GitHub-feed installations on Windows and Ubuntu matched this archive exactly. Windows Framework/CoreCLR fixture injection succeeded; the Linux Bash launcher injected once with unchanged target hash, and all 17 independent packaged-runtime cases passed.
+
+ClamAV 1.5.4, definition 28175 (2026-11-06), scanned the archive and extracted files before publication: 71 scanned files, zero infected. Both feed-consumer jobs depend on that successful scan/publication. Local Defender separately passed for the local preview package; its hash differs from the Actions test package. Reports and the ClamAV log are retained beside this session note. No NuGet.org publication. Alpine/musl, ARM64 and arbitrary Linux distributions remain unverified.
