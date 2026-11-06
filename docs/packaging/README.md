@@ -6,13 +6,16 @@ Implementation lives in `src/`, verification fixtures and hosts in `tests/`, use
 
 The publishable project is `src/Tool/SourceMap.csproj`, producing `DotNetFaultInjectionAgent.Tool`. `Directory.Build.props` disables packing by default; only Tool enables it. Planner is included as a CLI dependency. Runtime, native extensions and test programs are not separately configured for NuGet publication.
 
-The package includes the CLI, Planner, required managed dependencies including Roslyn, an English README, the AI planning guide, MIT license text and version 3 schema. The profiler engine, injection Runtime and native DLL/SO files are deployed separately. Installing the CLI alone does not enable injection.
+The package includes the CLI, Planner, required managed dependencies including Roslyn, an English README, the AI planning guide, MIT license text and version 3 schema. The Windows x64 Engine, native extension, XML, launcher, checksum manifest and third-party notices are included under the installed tool runtime/win-x64 directory. Users export them with the CLI. Linux execution assets and the generic managed Runtime are not included.
 
 ## Build and verify
 
-Use .NET 10 SDK and PowerShell 7 from the repository root:
+Maintainer prerequisites: .NET 10 SDK, PowerShell 7, Visual Studio C++ tools with ATL/Windows SDK, CLR SDK headers and nlohmann/json 3.11.3 headers. Users of the published package do not need these build dependencies.
+
+Clone microsoft/CLRInstrumentationEngine and checkout revision 0055c6fce2fe16770f5908ef14cfd7f8a42c2fab. Build and stage the execution payload before packing:
 
 ```powershell
+./tools/Build-WindowsRuntime.ps1 -EngineSource <pinned-source-directory> -ClrHeaders <cor.h-directory> -JsonHeaders <nlohmann-parent-directory>
 dotnet build DotNetFaultInjectionAgent.slnx -c Release
 ./tools/Pack.ps1
 ./tools/Test-Package.ps1 -Package ./artifacts/packages/DotNetFaultInjectionAgent.Tool.0.1.0-preview.4.nupkg
@@ -26,8 +29,29 @@ Package metadata is maintained in the Tool csproj. The package README is [nuget-
 
 The project uses the [MIT License](../../LICENSE), also declared through NuGet's SPDX license metadata. Dependencies retain their own licenses.
 
-Confirm the publication version, ownership of the NuGet.org package ID and publishing credentials. The GitHub repository is currently private: decide where package users can read the linked documentation. Any future distribution including native engines requires a separate review of that distribution's dependencies, signatures and licenses.
+Confirm the publication version, ownership of the NuGet.org package ID and publishing credentials. The GitHub repository is currently private: decide where package users can read the linked documentation. The Windows Engine provenance and notices for this package are documented below. Linux runtime redistribution remains a separate distribution task.
 
 Build release packages from the selected source revision and rerun package verification. The preparation scripts do not push to NuGet.org.
 
 References: [Microsoft .NET tool tutorial](https://learn.microsoft.com/en-us/dotnet/core/tools/global-tools-how-to-create), [NuGet pack metadata](https://learn.microsoft.com/en-us/nuget/reference/msbuild-targets).
+
+## Windows payload provenance
+
+Build-WindowsRuntime restores the upstream native build dependencies, builds Release x64 with SignType=None and SpectreMitigation=false, compiles this repository's Rewrite.cpp and stages a flat payload. This setting avoids a maintainer dependency on optional Spectre libraries and is recorded in the manifest. Stage-WindowsRuntime accepts the pinned unmodified Engine source revision and copies its own Release output, not a Visual Studio installation binary. Preserve the Engine MIT license, upstream third-party notices and nlohmann/json MIT license in all exports.
+
+The .NET tool pack includes staged runtime files as published tool output, with no duplicate NuGet content/ copy. NU5111 is suppressed for the explicitly exported launcher: it is not a NuGet install.ps1 hook and is never autoexecuted at installation.
+
+Test-Package checks payload completeness, isolated installation, runtime discovery/export, refusal to overwrite, and (on Windows) one injected IOException followed by successful writing in Framework and CoreCLR fixtures, with unchanged target hashes. Fixture compilation is a maintainer verification step, not a user installation requirement.
+
+## GitHub Packages test feed
+
+Test packages are published to `https://nuget.pkg.github.com/synthaicode/index.json`, not NuGet.org. The Publish and verify test package workflow runs on package-test/** branches or manual dispatch. It builds the runtime from pinned source, creates a unique 0.1.0-github.<run-id>.<attempt> version, verifies the local artifact, publishes with repository-scoped GITHUB_TOKEN, and installs again using only GitHub Packages with an empty cache.
+
+The fetched nupkg SHA-256 must equal the locally tested artifact. The workflow then exports the payload and runs actual Framework/CoreCLR injection tests. Package credentials are supplied through the NuGetPackageSourceCredentials_packagefeed environment variable and are not written to the repository or test artifacts. Workflow permissions are contents:read and packages:write. Artifact output includes packages, checksums and verification results, not credentials.
+
+Users downloading private test packages outside Actions need a package-readable credential in their NuGet configuration. Example after configuring that source:
+
+```powershell
+dotnet tool install DotNetFaultInjectionAgent.Tool --tool-path ./test-tools --version <test-version> --add-source https://nuget.pkg.github.com/synthaicode/index.json
+./test-tools/dotnet-fault-injection.exe runtime export --output ./fault-runtime
+```

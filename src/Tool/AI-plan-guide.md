@@ -1,5 +1,34 @@
 # Ask your AI assistant to create an injection plan
 
+## Download and use the bundled Windows runtime
+
+After this package is published to NuGet.org, install the .NET tool and export the execution files:
+
+```powershell
+dotnet tool install --global DotNetFaultInjectionAgent.Tool --prerelease
+dotnet-fault-injection guide
+dotnet-fault-injection runtime list
+dotnet-fault-injection runtime export --output ./fault-runtime
+```
+
+Before publication, use the same installation command with `--add-source <local-package-directory>` and `--version 0.1.0-preview.4` instead of `--prerelease`. The download/export workflow is validated against a locally built NuGet package; this documentation does not imply NuGet.org publication has occurred.
+
+`fault-runtime` must be a new directory. Export verifies the payload checksums and does not replace an existing directory. It contains the Windows x64 Engine, Rewrite.dll, Rewrite.xml, Invoke-FaultInjection.ps1, provenance/checksum manifest and dependency license notices. No native compilation or repository checkout is required on the user's machine.
+
+Windows prerequisites are .NET 10 for the CLI, PowerShell 7 for execution, and the runtime required by the target application. The included native binaries have system DLL dependencies only in the inspected build. Keep the exported files together.
+
+Create and verify a plan for the actual supported Windows target, then launch from PowerShell 7:
+
+```powershell
+./fault-runtime/Invoke-FaultInjection.ps1 -Target C:/test/SqlTarget.exe -Plan C:/test/plan.json
+```
+
+For the .NET CoreFileTarget fixture, provide its apphost EXE to Target and bind the plan to its matching managed DLL. Pass the planned destination path through `-TargetArguments`. The launcher selects COR_* for Framework or CORECLR_* for the dedicated CoreCLR fixture and supplies the bundled Engine/config/extension. Check PlanAccepted, IlRewritten, Firings, BinaryUnchanged and the application result.
+
+The Windows payload supports the existing dedicated Framework/CoreCLR fixtures and order host; bundling does not add support for arbitrary application binaries. It uses an unsigned extension with signature-validation bypass limited to the test child process. Services require their own service configuration; exporting does not register a service.
+
+Only win-x64 execution assets are bundled in this release candidate. Generic Linux/.NET planning remains supported, but Linux execution assets are not included in this payload and use the separate developer deployment instructions.
+
 Use the AI assistant in your own development environment to inspect the application and run `dotnet-fault-injection`. The CLI performs binary/source/PDB checks; the AI selects a supported test that answers your question. The tool does not contain an embedded AI service.
 
 ## Give the assistant the required inputs
@@ -104,4 +133,4 @@ Return one verified JSON together with the target identity, call site, condition
 
 Plan verification checks the binding and format; it does not show that injection fired or that the application recovered correctly. During execution, distinguish plan acceptance, IL rewriting and actual firing. Check application logs, notifications, retry behavior and database/file state separately. A pre-send exception does not simulate losing a response after a committed database write.
 
-See the [sample matrix](../../samples/README.md) and [command and format details](DEVELOPMENT.md). The native profiler engine, extension and runtime must be deployed separately from the planning CLI.
+See the [sample matrix](../../samples/README.md) and [command and format details](DEVELOPMENT.md). The Windows engine/extension/launcher can be exported from the installed CLI as described below. Generic Linux execution uses a separate deployment.

@@ -1,0 +1,68 @@
+name: Publish and verify test package
+on:
+  workflow_dispatch:
+  push:
+    branches: ['package-test/**']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  windows-package:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/CLRInstrumentationEngine
+          ref: 0055c6fce2fe16770f5908ef14cfd7f8a42c2fab
+          path: artifacts/engine-source
+          persist-credentials: false
+      - name: Prepare pinned JSON headers
+        run: |
+          New-Item -ItemType Directory -Force artifacts/headers/nlohmann | Out-Null
+          Invoke-WebRequest https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp -OutFile artifacts/headers/nlohmann/json.hpp
+      - name: Build Windows runtime from source
+        run: |
+          $headers = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/NETFXSDK" -Directory |
+            Sort-Object Name -Descending | ForEach-Object { Join-Path $_.FullName 'Include/um' } |
+            Where-Object { Test-Path (Join-Path $_ 'cor.h') } | Select-Object -First 1
+          if (-not $headers) { throw '.NET Framework SDK native headers are required.' }
+          ./tools/Build-WindowsRuntime.ps1 -EngineSource ./artifacts/engine-source -ClrHeaders $headers -JsonHeaders ./artifacts/headers
+      - name: Pack and verify locally
+        run: |
+          $version = "0.1.0-github.${env:GITHUB_RUN_ID}.${env:GITHUB_RUN_ATTEMPT}"
+          "TEST_PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+          ./tools/Pack.ps1 -Version $version
+          ./tools/Test-Package.ps1 -Package "./artifacts/packages/DotNetFaultInjectionAgent.Tool.$version.nupkg"
+      - name: Publish to GitHub Packages
+        env:
+          PACKAGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet nuget push "./artifacts/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" --source https://nuget.pkg.github.com/synthaicode/index.json --api-key $env:PACKAGE_TOKEN --timeout 120
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Packages publish failed.' }
+      - name: Fetch from GitHub Packages and verify execution
+        env:
+          NuGetPackageSourceCredentials_packagefeed: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
+        run: |
+          ./tools/Test-Package.ps1 -Package "./artifacts/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl https://nuget.pkg.github.com/synthaicode/index.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-verification
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/package-tests/*/summary.json
+            artifacts/package-tests/*/*-result.json
+            artifacts/runtime/win-x64/manifest.json
+          if-no-files-found: warn
