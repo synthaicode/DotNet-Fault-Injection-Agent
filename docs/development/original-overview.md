@@ -1,4 +1,4 @@
-# Windows Chaos Agent
+# DotNet Fault Injection Agent
 
 [計画から指定する CoreCLR 呼び出し注入](../../poc/scenarios/PlanDrivenInjection/README.md)を追加しました。
 対象と呼び出し箇所をソース・PDB・DLLで照合し、条件・障害・発火上限を version 3 の

@@ -1,8 +1,8 @@
-# Windows Chaos Agent
+# DotNet Fault Injection Agent
 
-Windows Chaos Agentは、.NETアプリケーションで再現しにくい失敗や処理の遅れを意図的に起こし、障害時の動作を繰り返し検証するためのツールです。
+DotNet Fault Injection Agentは、.NETアプリケーションで再現しにくい失敗や処理の遅れを意図的に起こし、障害時の動作を繰り返し検証するためのツールです。
 
-![利用者の環境のAIが注入計画を作り、Windows Chaos Agentで障害を再現して結果を確かめる流れ](docs/assets/windows-chaos-agent-overview-ja.png)
+![利用者の環境のAIが注入計画を作り、DotNet Fault Injection Agentで障害を再現して結果を確かめる流れ](docs/assets/dotnet-fault-injection-agent-overview-ja.png)
 
 正常に動くことは確認できても、ファイルに書き込めなかったとき、SQLを送信できなかったとき、処理の完了順が逆になったときの動作まで確かめるには、その状態を作る必要があります。
 実際の障害を待つだけでは、試したい箇所で、試したい条件の失敗が起きるとは限りません。
@@ -71,3 +71,5 @@ Windowsの専用試験には、対象側に障害処理のヘルパーを組み�
 
 対応する呼び出しや環境は、各サンプルのREADMEにあります。
 開発用のソースと詳細な検証手順は [開発用の実装](poc/README.md)、説明方針の根拠は [類似ツールの調査](docs/research/tool-positioning.md) にまとめています。
+
+内部の識別子・成果物名を変更する際の影響は、[内部名と互換性](docs/development/naming-compatibility.md)にまとめています。

@@ -1,17 +1,17 @@
 Generation mode: built-in image_gen
 Reference: https://github.com/synthaicode/XRefKit/blob/main/human-docs/en/assets/why_xrefkit_needed/whatis_xrefkit.png
 
-Create a NEW Japanese illustrated infographic for a GitHub README, using the attached reference ONLY for its friendly visual style and the idea of mapping user problems to capabilities and benefits. Do NOT reproduce XRefKit branding or text. Asset: Windows Chaos Agent explanatory infographic. Wide landscape around 3:2. White background, very clear Japanese typography, thick dark outlines, rounded pastel panels, blue/orange/green highlights, charming small human and robot illustrations like the reference. Professional information hierarchy, ample whitespace, readable at README width. This is a fault-injection testing tool, not an AI product that automatically judges correctness.
+Create a NEW Japanese illustrated infographic for a GitHub README, using the attached reference ONLY for its friendly visual style and the idea of mapping user problems to capabilities and benefits. Do NOT reproduce XRefKit branding or text. Asset: DotNet Fault Injection Agent explanatory infographic. Wide landscape around 3:2. White background, very clear Japanese typography, thick dark outlines, rounded pastel panels, blue/orange/green highlights, charming small human and robot illustrations like the reference. Professional information hierarchy, ample whitespace, readable at README width. This is a fault-injection testing tool, not an AI product that automatically judges correctness.
 
-Exact title: 「Windows Chaos Agent」
+Exact title: 「DotNet Fault Injection Agent」
 Subtitle: 「再現しにくい障害を、繰り返し検証できる試験に」
 
 Upper portion: a simple left-to-right workflow with exactly four clearly separated roles, small friendly illustrations, arrows:
 1 「利用者」 with text 「確かめたいことを伝える」
 2 「利用者の環境のAI」 with text 「対象を調べ、注入計画を作る」
-3 the central focal card 「Windows Chaos Agent」 with text 「計画に従って例外・遅延を注入」
+3 the central focal card 「DotNet Fault Injection Agent」 with text 「計画に従って例外・遅延を注入」
 4 「対象プログラム」 with text 「動作と結果を観測」
-Between AI and Windows Chaos Agent show a small document icon marked 「注入計画 JSON」. Do not depict AI as embedded inside Windows Chaos Agent. Do not imply AI guarantees test correctness.
+Between AI and DotNet Fault Injection Agent show a small document icon marked 「注入計画 JSON」. Do not depict AI as embedded inside DotNet Fault Injection Agent. Do not imply AI guarantees test correctness.
 
 Lower portion: three aligned horizontal rows under three concise column headings:
 「困りごと」 → 「ツールで作る状態」 → 「確かめられること」
