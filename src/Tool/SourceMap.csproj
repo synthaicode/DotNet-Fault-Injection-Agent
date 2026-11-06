@@ -9,7 +9,7 @@
     <PackageId>DotNetFaultInjectionAgent.Tool</PackageId>
     <ToolCommandName>dotnet-fault-injection</ToolCommandName>
     <Version>0.1.0-preview.4</Version>
-    <Description>DotNet Fault Injection Agent planning CLI and bundled Windows x64 execution tools.</Description>
+    <Description>DotNet Fault Injection Agent planning CLI and bundled Windows/Linux x64 execution tools.</Description>
     <Authors>synthaicode</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -29,8 +29,8 @@
     <None Include="../../docs/packaging/nuget-readme.md" Pack="true" PackagePath="/README.md" />
     <None Include="../../schemas/injection-plan.v3.schema.json" Pack="true" PackagePath="schemas/" />
     <ProjectReference Include="../Planner/Planner.csproj" />
-    <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll" />
-    <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll" />
+    <!-- SDK compiler binaries can contain host-specific ReadyToRun code. Use portable package assets. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
   </ItemGroup>
   <Target Name="RequireWindowsRuntime" BeforeTargets="GenerateNuspec">
     <Error Condition="!Exists('$(MSBuildProjectDirectory)/../../artifacts/runtime/win-x64/manifest.json')" Text="Build and stage the Windows runtime with tools/Stage-WindowsRuntime.ps1 before packing." />
