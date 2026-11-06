@@ -145,7 +145,7 @@ private:
     {
         std::fprintf(stderr, "%s\n", message.c_str());
         wchar_t path[32768];
-        const auto length = GetEnvironmentVariableW(L"WINDOWS_CHAOS_DIAGNOSTICS", path, _countof(path));
+        const auto length = GetEnvironmentVariableW(L"DOTNET_FAULT_INJECTION_DIAGNOSTICS", path, _countof(path));
         if (!length || length >= _countof(path)) return;
         const HANDLE log = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -159,7 +159,7 @@ private:
     void LoadPlan()
     {
         wchar_t path[32768];
-        const DWORD length = GetEnvironmentVariableW(L"WINDOWS_CHAOS_PLAN", path, _countof(path));
+        const DWORD length = GetEnvironmentVariableW(L"DOTNET_FAULT_INJECTION_PLAN", path, _countof(path));
         if (length == 0) { Report("no plan path"); return; }
         if (length >= _countof(path)) throw std::runtime_error("plan path too long");
 
@@ -189,7 +189,7 @@ private:
         targetName = std::filesystem::path(executable).filename().wstring();
         if (_wcsicmp(targetName.c_str(), L"OrderAgentProbe.exe") == 0)
         {
-            const DWORD targetLength = GetEnvironmentVariableW(L"WINDOWS_CHAOS_SAMPLE_EXE", path, _countof(path));
+            const DWORD targetLength = GetEnvironmentVariableW(L"DOTNET_FAULT_INJECTION_SAMPLE_EXE", path, _countof(path));
             if (targetLength == 0 || targetLength >= _countof(path))
                 throw std::runtime_error("missing sample executable path");
             executable.assign(path, targetLength);
@@ -244,7 +244,7 @@ private:
 
         wchar_t serviceFlag[2]{};
         const bool serviceProbe = !externalSample && GetEnvironmentVariableW(
-            L"WINDOWS_CHAOS_SERVICE_PROBE", serviceFlag, _countof(serviceFlag)) == 1 && serviceFlag[0] == L'1';
+            L"DOTNET_FAULT_INJECTION_SERVICE_PROBE", serviceFlag, _countof(serviceFlag)) == 1 && serviceFlag[0] == L'1';
         if (serviceProbe && rules.size() != 1)
             throw std::runtime_error("service probe requires one rule");
         deferMetadata = externalSample || serviceProbe || coreFileProbe;
@@ -311,7 +311,7 @@ private:
 
         for (const auto& [token, runtimeRule] : plannedRules)
         {
-            const auto key = L"WINDOWS_CHAOS_VALIDATED_RULE_" + std::to_wstring(token);
+            const auto key = L"DOTNET_FAULT_INJECTION_VALIDATED_RULE_" + std::to_wstring(token);
             if (!SetEnvironmentVariableW(key.c_str(), runtimeRule.c_str()))
                 throw std::runtime_error("cannot publish validated rule");
         }
@@ -525,12 +525,12 @@ private:
         ASSEMBLYMETADATA identity{};
         identity.usMajorVersion = 1;
         mdAssemblyRef assembly;
-        result = assemblyEmit->DefineAssemblyRef(nullptr, 0, L"ChaosOrderBridge", &identity,
+        result = assemblyEmit->DefineAssemblyRef(nullptr, 0, L"DotNetFaultInjectionAgent.OrderBridge", &identity,
             nullptr, 0, 0, &assembly);
         if (FAILED(result)) return result;
 
         mdTypeRef type;
-        result = emit->DefineTypeRefByName(assembly, L"ChaosOrderBridge.Dispatch", &type);
+        result = emit->DefineTypeRefByName(assembly, L"DotNetFaultInjectionAgent.OrderBridge.Dispatch", &type);
         if (FAILED(result)) return result;
 
         BYTE signature[9] = {IMAGE_CEE_CS_CALLCONV_DEFAULT, 2, ELEMENT_TYPE_I4, ELEMENT_TYPE_CLASS};

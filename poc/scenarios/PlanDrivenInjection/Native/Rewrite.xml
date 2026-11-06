@@ -2,7 +2,7 @@
   <InstrumentationMethod>
     <Name>Plan-driven call injection</Name>
     <Description>Invoke the managed fault runtime at a verified call site</Description>
-    <Module>libChaosRewrite.so</Module>
+    <Module>libDotNetFaultInjectionAgent.so</Module>
     <ClassGuid>{9F919AFE-C6F4-4263-A112-8DEC9947BC1E}</ClassGuid>
     <Priority>50</Priority>
   </InstrumentationMethod>

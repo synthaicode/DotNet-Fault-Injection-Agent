@@ -10,7 +10,24 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
 if (args.Length > 0 && args[0] == "v3")
-    return WindowsChaosAgent.PlanDrivenPlanner.Run(args.Skip(1).ToArray());
+    return DotNetFaultInjectionAgent.PlanDrivenPlanner.Run(args.Skip(1).ToArray());
+
+// Keep the packaged command's verb-first form alongside SourceMap's positional form.
+if (args.Length > 0 && args[0] is "list" or "recommend" or "plan" or "verify")
+{
+    var verb = args[0];
+    if (verb == "plan" && args.Length == 6)
+        args = new[] { args[1], args[2], args[3], args[4], args[5] };
+    else if (verb is "list" or "recommend" && args.Length == 4)
+        args = new[] { args[1], args[2], args[3], verb };
+    else if (verb == "verify" && args.Length == 5)
+        args = new[] { args[1], args[2], args[3], verb, args[4] };
+    else
+    {
+        Console.Error.WriteLine("Usage: dotnet-fault-injection <list|recommend|plan|verify> <source|project> <binary> <references> [selection] [plan.json]");
+        return 1;
+    }
+}
 
 try
 {

@@ -196,11 +196,11 @@ public:
         ASSEMBLYMETADATA identity{};
         identity.usMajorVersion = 1;
         mdAssemblyRef runtimeAssembly;
-        if (FAILED(assemblyEditor->DefineAssemblyRef(nullptr, 0, u"WindowsChaosAgent.Runtime",
+        if (FAILED(assemblyEditor->DefineAssemblyRef(nullptr, 0, u"DotNetFaultInjectionAgent.Runtime",
                 &identity, nullptr, 0, 0, &runtimeAssembly))) return E_FAIL;
         mdTypeRef runtimeType;
         if (FAILED(editor->DefineTypeRefByName(runtimeAssembly,
-                u"WindowsChaosAgent.Runtime.FaultRuntime", &runtimeType))) return E_FAIL;
+                u"DotNetFaultInjectionAgent.Runtime.FaultRuntime", &runtimeType))) return E_FAIL;
         mdMemberRef beforeCall;
         const BYTE signature[] = {0, 1, 1, 0x0e}; // static void(string)
         if (FAILED(editor->DefineMemberRef(runtimeType, u"BeforeCall", signature,
@@ -246,8 +246,8 @@ private:
 
     void LoadPlan()
     {
-        const char* path = std::getenv("WINDOWS_CHAOS_PLAN");
-        if (!path) throw std::runtime_error("WINDOWS_CHAOS_PLAN is missing");
+        const char* path = std::getenv("DOTNET_FAULT_INJECTION_PLAN");
+        if (!path) throw std::runtime_error("DOTNET_FAULT_INJECTION_PLAN is missing");
         std::ifstream input(path, std::ios::binary | std::ios::ate);
         const auto size = input.tellg();
         if (size <= 0 || size > 65536) throw std::runtime_error("invalid plan size");

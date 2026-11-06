@@ -8,10 +8,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $samples = Join-Path $root 'samples'
-$tool = Join-Path $root '.tools/dotnet-chaos.exe'
+$tool = Join-Path $root '.tools/dotnet-fault-injection.exe'
 $windowsRuntime = Join-Path $root 'poc/injection/ProfilerRewrite/bin'
 $v3 = Join-Path $root 'poc/scenarios/PlanDrivenInjection'
-if (-not (Test-Path -LiteralPath $tool)) { throw 'Install WindowsChaosAgent.Tool into .tools before preparing samples.' }
+if (-not (Test-Path -LiteralPath $tool)) { throw 'Install DotNetFaultInjectionAgent.Tool into .tools before preparing samples.' }
 if ([bool]$OrderProject -ne [bool]$OrderBinary) { throw 'Supply both OrderProject and OrderBinary.' }
 foreach ($file in @('Rewrite.dll', 'Rewrite.xml', 'MicrosoftInstrumentationEngine_x64.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $windowsRuntime $file))) { throw "Build and assemble the Windows runtime first: $file" }
@@ -50,7 +50,7 @@ function New-SampleLayout([string] $Name, [string] $Output, [string] $Source, [s
             if (-not ([IO.Path]::GetFullPath($store)).StartsWith($expectedParent, [StringComparison]::OrdinalIgnoreCase)) { throw 'Tool store escaped sample directory.' }
             Remove-Item -LiteralPath $store -Recurse -Force
         }
-        $shim = Join-Path $toolOutput 'dotnet-chaos.exe'
+        $shim = Join-Path $toolOutput 'dotnet-fault-injection.exe'
         if (Test-Path -LiteralPath $shim) { Remove-Item -LiteralPath $shim }
     }
     foreach ($part in @('target', 'reference')) { New-Item -ItemType Directory -Force (Join-Path $directory $part) | Out-Null }
@@ -65,7 +65,7 @@ function New-SampleLayout([string] $Name, [string] $Output, [string] $Source, [s
         Copy-Item -LiteralPath (Join-Path $root '.tools/.store') -Destination (Join-Path $directory 'tools') -Recurse -Force
     }
     if ($Kind -in @('WindowsPlan','WindowsFixed')) {
-        Copy-Item -LiteralPath (Join-Path $root 'Invoke-Chaos.ps1') -Destination (Join-Path $directory 'tools')
+        Copy-Item -LiteralPath (Join-Path $root 'Invoke-FaultInjection.ps1') -Destination (Join-Path $directory 'tools')
         foreach ($file in @('Rewrite.dll', 'Rewrite.xml', 'MicrosoftInstrumentationEngine_x64.dll')) {
             $from = Join-Path $windowsRuntime $file
             $to = Join-Path $directory "tools/runtime/$file"
@@ -118,11 +118,11 @@ foreach ($entry in @(@('ProfilerReturnValue','ProfilerTarget'), @('SharedFlags',
 }
 $directory = New-SampleLayout 'PlanDrivenInjection' (Join-Path $v3 'Probe/bin/publish') (Join-Path $v3 'Probe/Program.cs') 'LinuxPlan'
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Invoke-LinuxSample.ps1') -Destination (Join-Path $directory 'tools')
-foreach ($file in @('libChaosRewrite.so','libInstrumentationEngine.so','Rewrite.xml')) {
+foreach ($file in @('libDotNetFaultInjectionAgent.so','libInstrumentationEngine.so','Rewrite.xml')) {
     Copy-Item -LiteralPath (Join-Path $v3 "Native/bin/$file") -Destination (Join-Path $directory 'tools/runtime')
 }
-Copy-Item -LiteralPath (Join-Path $v3 'Runtime/bin/Release/net8.0/WindowsChaosAgent.Runtime.dll') -Destination (Join-Path $directory 'target')
-Copy-Item -LiteralPath (Join-Path $v3 'Runtime/bin/Release/net8.0/WindowsChaosAgent.Runtime.deps.json') -Destination (Join-Path $directory 'tools/runtime')
+Copy-Item -LiteralPath (Join-Path $v3 'Runtime/bin/Release/net8.0/DotNetFaultInjectionAgent.Runtime.dll') -Destination (Join-Path $directory 'target')
+Copy-Item -LiteralPath (Join-Path $v3 'Runtime/bin/Release/net8.0/DotNetFaultInjectionAgent.Runtime.deps.json') -Destination (Join-Path $directory 'tools/runtime')
 New-Item -ItemType Directory -Force (Join-Path $directory 'tools/planner') | Out-Null
 Get-ChildItem (Join-Path $v3 'Planner/bin/Release/net8.0') -File | Copy-Item -Destination (Join-Path $directory 'tools/planner')
 $source = Join-Path $v3 'Probe/Program.cs'
@@ -149,7 +149,7 @@ if ($OrderProject) {
         Copy-Item -LiteralPath ([IO.Path]::ChangeExtension($OrderBinary,'.pdb')) -Destination (Join-Path $directory 'reference')
         $plan = New-LegacyPlan $directory $OrderProject $OrderBinary $net48 'MultithreadedInMemoryTableInsert.MultithreadedOrderInsertMain.PerformSqlTask(int, MultithreadedInMemoryTableInsert.MultithreadedOrderInsertMain)'
         $plan.server = '(localdb)\MSSQLLocalDB'
-        $plan.database = 'ChaosOrderAgent_' + [guid]::NewGuid().ToString('N')
+        $plan.database = 'DotNetFaultInjectionAgentOrder_' + [guid]::NewGuid().ToString('N')
         $plan.procedure = 'Website.InsertCustomerOrders'
         $plan.maxFirings = 1
         if ($name -eq 'OrderDelay') { $plan.fault = 'delay-before-send'; $plan.delayMs = 4000 }

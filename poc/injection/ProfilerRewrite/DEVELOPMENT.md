@@ -30,7 +30,7 @@ ProfilerTargetをReleaseで一度だけビルドします。CLR Instrumentation 
 | COR_ENABLE_PROFILING | 1 |
 | COR_PROFILER | {324F817A-7420-4E6D-B3C1-143FBED6D855} |
 | COR_PROFILER_PATH と COR_PROFILER_PATH_64 | Visual Studio同梱のMicrosoftInstrumentationEngine_x64.dllの絶対パス |
-| MicrosoftInstrumentationEngine_ConfigPath64_Chaos | Rewrite.xmlの絶対パス |
+| MicrosoftInstrumentationEngine_ConfigPath64_DotNetFaultInjectionAgent | Rewrite.xmlの絶対パス |
 | MicrosoftInstrumentationEngine_DisableCodeSignatureValidation | 1 |
 | MicrosoftInstrumentationEngine_LogLevel | All |
 | MicrosoftInstrumentationEngine_FileLogPath | ログの絶対パス |

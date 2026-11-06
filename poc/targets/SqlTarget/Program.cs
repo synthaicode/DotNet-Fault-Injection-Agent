@@ -19,7 +19,7 @@ internal static class Program
 
         internal InjectionRule(int token)
         {
-            Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + token) ?? "").Split('\n');
+            Fields = (Environment.GetEnvironmentVariable("DOTNET_FAULT_INJECTION_VALIDATED_RULE_" + token) ?? "").Split('\n');
             remaining = (Fields.Length >= 2 && Fields.Length <= 5) &&
                 int.TryParse(Fields[Fields.Length <= 3 ? Fields.Length - 1 : 3], out int limit) ? limit : 0;
         }
@@ -127,7 +127,7 @@ internal static class Program
     {
         internal ServiceProbe()
         {
-            ServiceName = "WindowsChaosAgentProbe";
+            ServiceName = "DotNetFaultInjectionAgentProbe";
         }
 
         protected override void OnStart(string[] args)

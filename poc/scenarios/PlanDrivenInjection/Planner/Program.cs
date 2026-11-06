@@ -1,1 +1,1 @@
-return WindowsChaosAgent.PlanDrivenPlanner.Run(args);
+return DotNetFaultInjectionAgent.PlanDrivenPlanner.Run(args);

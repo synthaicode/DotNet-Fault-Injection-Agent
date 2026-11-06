@@ -17,8 +17,8 @@ Joinを含む試験なので、非同期にポーリングした場合のメモ�
 専用の非本番環境で、管理者権限のPowerShellから実行します。サービス名が既に使われている場合は中止します。ログにはサービスの実行アカウントが書き込める絶対パスを指定します。
 
 ```powershell
-$name = 'WindowsChaosSyncProbe'
-$log = Join-Path $env:ProgramData ("WindowsChaosSyncProbe-" + [guid]::NewGuid() + ".log")
+$name = 'DotNetFaultInjectionAgentSyncProbe'
+$log = Join-Path $env:ProgramData ("DotNetFaultInjectionAgentSyncProbe-" + [guid]::NewGuid() + ".log")
 if (Get-Service -Name $name -ErrorAction SilentlyContinue) { throw 'Service name is in use.' }
 New-Service -Name $name -BinaryPathName ('"' + $exe + '"') -StartupType Manual
 try {

@@ -46,9 +46,9 @@ bash poc/scenarios/PlanDrivenInjection/Native/build.sh \
 ```
 
 同じ出力先へ、使用する `libInstrumentationEngine.so` と、ビルドした
-`WindowsChaosAgent.Runtime.deps.json` を配置する。検証では Microsoft.CodeCoverage
+`DotNetFaultInjectionAgent.Runtime.deps.json` を配置する。検証では Microsoft.CodeCoverage
 18.7.0 の Linux x64 Engine を使用した。テスト用コンテナは
-`Native/Dockerfile` から `windows-chaos-runtime:local` としてビルドできる。
+`Native/Dockerfile` から `dotnet-fault-injection-runtime:local` としてビルドできる。
 
 ## 計画を作る
 
@@ -107,8 +107,8 @@ dotnet run --project poc/tools/SourceMap -c Release -- v3 verify target.dll Prog
 
 ## 対象を起動する
 
-対象アプリの配置先へ `WindowsChaosAgent.Runtime.dll` を追加する。子プロセスの
-`DOTNET_ADDITIONAL_DEPS` にはビルドした `WindowsChaosAgent.Runtime.deps.json` を指定する。
+対象アプリの配置先へ `DotNetFaultInjectionAgent.Runtime.dll` を追加する。子プロセスの
+`DOTNET_ADDITIONAL_DEPS` にはビルドした `DotNetFaultInjectionAgent.Runtime.deps.json` を指定する。
 対象アプリへの ProjectReference の追加や、対象 DLL の再ビルドは不要。
 
 対象、Engine、拡張、共通ランタイム、計画は、信頼できる読み取り専用の配置から使う。
@@ -117,10 +117,10 @@ dotnet run --project poc/tools/SourceMap -c Release -- v3 verify target.dll Prog
 CORECLR_ENABLE_PROFILING=1 \
 CORECLR_PROFILER='{324F817A-7420-4E6D-B3C1-143FBED6D855}' \
 CORECLR_PROFILER_PATH=/absolute/profiler/libInstrumentationEngine.so \
-MicrosoftInstrumentationEngine_ConfigPath64_Chaos=/absolute/profiler/Rewrite.xml \
+MicrosoftInstrumentationEngine_ConfigPath64_DotNetFaultInjectionAgent=/absolute/profiler/Rewrite.xml \
 MicrosoftInstrumentationEngine_DisableCodeSignatureValidation=1 \
-DOTNET_ADDITIONAL_DEPS=/absolute/profiler/WindowsChaosAgent.Runtime.deps.json \
-WINDOWS_CHAOS_PLAN=/absolute/plan.json CHAOS_TEST_CASE=enabled \
+DOTNET_ADDITIONAL_DEPS=/absolute/profiler/DotNetFaultInjectionAgent.Runtime.deps.json \
+DOTNET_FAULT_INJECTION_PLAN=/absolute/plan.json CHAOS_TEST_CASE=enabled \
 dotnet /absolute/app/target.dll
 ```
 
@@ -148,7 +148,7 @@ dotnet /absolute/app/target.dll
 先にネイティブ拡張と Engine を `Native/bin` へ配置する。
 
 ```powershell
-python poc/scenarios/PlanDrivenInjection/Tests/verify.py windows-chaos-runtime:local
+python poc/scenarios/PlanDrivenInjection/Tests/verify.py dotnet-fault-injection-runtime:local
 ```
 
 条件不一致、上限0、12並列呼び出しで上限1、開始回数と上限2、例外型と文言の切替、

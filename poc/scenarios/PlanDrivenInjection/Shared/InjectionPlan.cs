@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace WindowsChaosAgent;
+namespace DotNetFaultInjectionAgent;
 
 public sealed record Target(
     [property: JsonRequired] string Path,

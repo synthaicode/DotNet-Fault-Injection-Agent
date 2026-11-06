@@ -44,7 +44,7 @@ $start.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
 $start.RedirectStandardOutput = $true
 $start.RedirectStandardError = $true
 foreach ($key in @($start.Environment.Keys)) {
-    if ($key -match '^(COR_(ENABLE_PROFILING|PROFILER)|CORECLR_(ENABLE_PROFILING|PROFILER)|MicrosoftInstrumentationEngine_|WINDOWS_CHAOS_)') {
+    if ($key -match '^(COR_(ENABLE_PROFILING|PROFILER)|CORECLR_(ENABLE_PROFILING|PROFILER)|MicrosoftInstrumentationEngine_|DOTNET_FAULT_INJECTION_)') {
         $null = $start.Environment.Remove($key)
     }
 }
@@ -52,10 +52,10 @@ $prefix = if ($coreClr) { 'CORECLR' } else { 'COR' }
 $start.Environment[$prefix + '_ENABLE_PROFILING'] = '1'
 $start.Environment[$prefix + '_PROFILER'] = '{324F817A-7420-4E6D-B3C1-143FBED6D855}'
 $start.Environment[$prefix + '_PROFILER_PATH_64'] = $engine
-$start.Environment['MicrosoftInstrumentationEngine_ConfigPath64_Chaos'] = $config
+$start.Environment['MicrosoftInstrumentationEngine_ConfigPath64_DotNetFaultInjectionAgent'] = $config
 $start.Environment['MicrosoftInstrumentationEngine_DisableCodeSignatureValidation'] = '1'
-if ($planPath) { $start.Environment['WINDOWS_CHAOS_PLAN'] = $planPath }
-if ($PlanTarget) { $start.Environment['WINDOWS_CHAOS_SAMPLE_EXE'] = $binary }
+if ($planPath) { $start.Environment['DOTNET_FAULT_INJECTION_PLAN'] = $planPath }
+if ($PlanTarget) { $start.Environment['DOTNET_FAULT_INJECTION_SAMPLE_EXE'] = $binary }
 foreach ($argument in $TargetArguments) { $start.ArgumentList.Add($argument) }
 $process = [Diagnostics.Process]::Start($start)
 try {
