@@ -5,7 +5,7 @@ using System.Threading;
 
 internal sealed class SyncService : ServiceBase
 {
-    private const string Name = "WindowsChaosSyncProbe";
+    private const string Name = "DotNetFaultInjectionAgentSyncProbe";
 
     private SyncService()
     {

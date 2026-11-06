@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string] $Sample,
-    [string] $Image = 'windows-chaos-runtime:local',
+    [string] $Image = 'dotnet-fault-injection-runtime:local',
     [switch] $ConditionMismatch
 )
 $ErrorActionPreference = 'Stop'
@@ -19,10 +19,10 @@ foreach ($value in @(
     'CORECLR_ENABLE_PROFILING=1',
     'CORECLR_PROFILER={324F817A-7420-4E6D-B3C1-143FBED6D855}',
     'CORECLR_PROFILER_PATH=/profiler/libInstrumentationEngine.so',
-    'MicrosoftInstrumentationEngine_ConfigPath64_Chaos=/profiler/Rewrite.xml',
+    'MicrosoftInstrumentationEngine_ConfigPath64_DotNetFaultInjectionAgent=/profiler/Rewrite.xml',
     'MicrosoftInstrumentationEngine_DisableCodeSignatureValidation=1',
-    'DOTNET_ADDITIONAL_DEPS=/profiler/WindowsChaosAgent.Runtime.deps.json',
-    'WINDOWS_CHAOS_PLAN=/test/plan.json', "CHAOS_TEST_CASE=$condition"
+    'DOTNET_ADDITIONAL_DEPS=/profiler/DotNetFaultInjectionAgent.Runtime.deps.json',
+    'DOTNET_FAULT_INJECTION_PLAN=/test/plan.json', "CHAOS_TEST_CASE=$condition"
 )) { $arguments += @('-e',$value) }
 $arguments += @($Image,'timeout','30s','dotnet','Probe.dll','/test/files','12')
 $lines = @(& docker @arguments 2>&1 | ForEach-Object ToString)

@@ -1,0 +1,44 @@
+[
+  {
+    "Case": "ProfilerReturnValue",
+    "Passed": true,
+    "Firings": 0,
+    "BinaryUnchanged": true
+  },
+  {
+    "Case": "CoreFileTarget",
+    "Passed": true,
+    "Firings": 1,
+    "BinaryUnchanged": true
+  },
+  {
+    "Case": "FileWriteFailure",
+    "Passed": true,
+    "Firings": 1,
+    "BinaryUnchanged": true
+  },
+  {
+    "Case": "TcpConnectionRefused",
+    "Passed": true,
+    "Firings": 1,
+    "BinaryUnchanged": true
+  },
+  {
+    "Case": "SqlTimeout",
+    "Passed": true,
+    "Firings": 1,
+    "BinaryUnchanged": true
+  },
+  {
+    "Case": "OrderTimeout",
+    "Passed": true,
+    "Firings": 1,
+    "BinaryUnchanged": true
+  },
+  {
+    "Case": "OrderDelay",
+    "Passed": true,
+    "Firings": 1,
+    "BinaryUnchanged": true
+  }
+]

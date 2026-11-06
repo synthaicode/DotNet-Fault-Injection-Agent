@@ -6,7 +6,7 @@ var directory = args[0];
 Directory.CreateDirectory(directory);
 if (args.Length > 2 && args[2] == "mutate-plan")
 {
-    var planPath = Environment.GetEnvironmentVariable("WINDOWS_CHAOS_PLAN")!;
+    var planPath = Environment.GetEnvironmentVariable("DOTNET_FAULT_INJECTION_PLAN")!;
     File.AppendAllText(planPath, " ");
 }
 var tasks = Enumerable.Range(0, args.Length > 1 ? int.Parse(args[1]) : 3).Select(index => Task.Run(() =>

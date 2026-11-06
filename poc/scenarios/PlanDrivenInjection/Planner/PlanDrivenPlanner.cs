@@ -5,7 +5,7 @@ using System.Reflection.PortableExecutable;
 using System.Text.Json;
 
 
-namespace WindowsChaosAgent;
+namespace DotNetFaultInjectionAgent;
 
 public static class PlanDrivenPlanner
 {

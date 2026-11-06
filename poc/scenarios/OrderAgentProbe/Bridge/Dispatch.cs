@@ -4,7 +4,7 @@ using System.Data;
 using System.Data.Common;
 using System.Threading;
 
-namespace ChaosOrderBridge
+namespace DotNetFaultInjectionAgent.OrderBridge
 {
     public static class Dispatch
     {
@@ -25,7 +25,7 @@ namespace ChaosOrderBridge
                 if (fields.Length == 4)
                 {
                     Console.Error.WriteLine("fault fired: methodToken=" + methodToken + " timeout-before-send");
-                    throw new TimeoutException("Windows Chaos Agent: timeout before SQL send.");
+                    throw new TimeoutException("DotNet Fault Injection Agent: timeout before SQL send.");
                 }
 
                 delayed = true;
@@ -45,7 +45,7 @@ namespace ChaosOrderBridge
 
             internal Rule(int token)
             {
-                Fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + token) ?? "").Split('\n');
+                Fields = (Environment.GetEnvironmentVariable("DOTNET_FAULT_INJECTION_VALIDATED_RULE_" + token) ?? "").Split('\n');
                 remaining = (Fields.Length == 4 || Fields.Length == 5) && int.TryParse(Fields[3], out int limit) ? limit : 0;
             }
 

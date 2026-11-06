@@ -22,7 +22,7 @@ dotnet run --project poc/tools/SourceMap -- $source $exe $refs list
 dotnet run --project poc/tools/SourceMap -- $source $exe $refs 101 ./selected.json
 ```
 
-行番号は候補一覧に合わせます。生成したファイルの絶対パスを、[プロファイラーの起動条件](../../injection/ProfilerRewrite/README.md)に加えて検証用の子プロセスの WINDOWS_CHAOS_PLAN に渡します。計画を指定しない場合、SQLへの介入は無効です。
+行番号は候補一覧に合わせます。生成したファイルの絶対パスを、[プロファイラーの起動条件](../../injection/ProfilerRewrite/README.md)に加えて検証用の子プロセスの DOTNET_FAULT_INJECTION_PLAN に渡します。計画を指定しない場合、SQLへの介入は無効です。
 
 バージョン1の計画は一つのJSONオブジェクトで次を指定します。
 

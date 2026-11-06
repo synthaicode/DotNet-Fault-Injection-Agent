@@ -117,15 +117,15 @@ Selected は #ConfirmOrder を2回、Other は #ConfirmOrder を1回、Third は
 
 ## ChaosTestのWindowsサービスで一回だけ発火
 
-SqlTarget.exe を --service 付きで手動起動の専用サービス WindowsChaosAgentProbe に登録します。
+SqlTarget.exe を --service 付きで手動起動の専用サービス DotNetFaultInjectionAgentProbe に登録します。
 
 SourceMapで Program.Selected の計画を生成し、maxFirings が1のまま verify を実行します。
 
 ゲストへ転送したEXEのSHA-256も計画に照合します。
 
-プロファイラーの設定は専用サービスのレジストリキー HKLM:\SYSTEM\CurrentControlSet\Services\WindowsChaosAgentProbe の Environment（REG_MULTI_SZ）に設定します。
+プロファイラーの設定は専用サービスのレジストリキー HKLM:\SYSTEM\CurrentControlSet\Services\DotNetFaultInjectionAgentProbe の Environment（REG_MULTI_SZ）に設定します。
 
-[通常の起動設定](../../injection/ProfilerRewrite/DEVELOPMENT.md#起動条件と結果)に加え、WINDOWS_CHAOS_PLAN に計画の絶対パス、WINDOWS_CHAOS_SERVICE_PROBE に1、WINDOWS_CHAOS_DIAGNOSTICS にAgentの診断ログの絶対パスを指定します。
+[通常の起動設定](../../injection/ProfilerRewrite/DEVELOPMENT.md#起動条件と結果)に加え、DOTNET_FAULT_INJECTION_PLAN に計画の絶対パス、DOTNET_FAULT_INJECTION_SERVICE_PROBE に1、DOTNET_FAULT_INJECTION_DIAGNOSTICS にAgentの診断ログの絶対パスを指定します。
 
 サービスの開始引数には試験ログの絶対パスを渡します。試験後にサービスを停止し、登録を削除します。
 
@@ -190,7 +190,7 @@ DB側で既に処理済みの操作を再試行する場合の二重書込みは
 
 SourceMapの候補一覧から、ファイルなら WriteSelected、TCPなら ConnectSelected を選んでJSONを作成し、条件を設定して verify を通します。
 
-プロファイラーの起動設定は[既存の手順](../../injection/ProfilerRewrite/README.md)を使い、WINDOWS_CHAOS_PLAN に計画の絶対パスを渡します。いずれも専用EXEでの同期API試験です。
+プロファイラーの起動設定は[既存の手順](../../injection/ProfilerRewrite/README.md)を使い、DOTNET_FAULT_INJECTION_PLAN に計画の絶対パスを渡します。いずれも専用EXEでの同期API試験です。
 
 | 障害種別 | 対象と条件 | 試験用EXEの引数 |
 |---|---|---|

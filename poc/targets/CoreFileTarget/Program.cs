@@ -54,7 +54,7 @@ internal static class Program
 
         internal Rule(int token)
         {
-            var fields = (Environment.GetEnvironmentVariable("WINDOWS_CHAOS_VALIDATED_RULE_" + token) ?? "").Split('\n');
+            var fields = (Environment.GetEnvironmentVariable("DOTNET_FAULT_INJECTION_VALIDATED_RULE_" + token) ?? "").Split('\n');
             if (fields.Length == 2 && int.TryParse(fields[1], out remaining))
                 Path = System.IO.Path.GetFullPath(fields[0]);
         }

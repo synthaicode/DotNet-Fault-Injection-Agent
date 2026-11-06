@@ -20,6 +20,15 @@
 
 必要なものは、.NET 10 SDK、.NET 8のターゲットパック、.NET Framework 4.8の参照アセンブリ、
 計画作成ツール、ビルド済みのWindows用・Linux用ランタイムです。
+計画作成ツールはリポジトリのルートで次のように作成・インストールします。
+
+```powershell
+dotnet pack poc/tools/SourceMap -c Release -o work/packages
+dotnet tool install DotNetFaultInjectionAgent.Tool --version 0.1.0-preview.4 --tool-path .tools --add-source work/packages
+.tools/dotnet-fault-injection.exe v3 capabilities
+```
+
+この手順はローカルで作成したパッケージを使います。NuGet.orgへの公開を前提にしません。
 エンジンと拡張のビルド方法は [Windows](../poc/injection/ProfilerRewrite/DEVELOPMENT.md) と
 [Linux](../poc/scenarios/PlanDrivenInjection/DEVELOPMENT.md) の開発用文書にあります。
 
@@ -43,7 +52,7 @@ PowerShell 7を使い、実行したいサンプルのフォルダへ移動し�
 
 ```powershell
 $plan = Get-Content -Raw ./plan.json | ConvertFrom-Json
-./tools/Invoke-Chaos.ps1 -Target ./target/CoreFileTarget.exe -Plan ./plan.json -RuntimeDirectory ./tools/runtime -TargetArguments $plan.path
+./tools/Invoke-FaultInjection.ps1 -Target ./target/CoreFileTarget.exe -Plan ./plan.json -RuntimeDirectory ./tools/runtime -TargetArguments $plan.path
 ```
 
 他のWindowsサンプルは、対象とアプリ用の引数を次のように変更します。
@@ -78,7 +87,7 @@ TargetArgumentsに渡すのは、外部サンプルEXEの絶対パス、計画�
 
 PlanDrivenInjectionでは、Windows用の起動ツールと計画作成ツールを使いません。
 計画作成には `tools/planner/Planner.dll`、実行には `tools/Invoke-LinuxSample.ps1` を使います。
-Dockerで `windows-chaos-runtime:local` イメージを使えることを前提にします。
+Dockerで `dotnet-fault-injection-runtime:local` イメージを使えることを前提にします。
 
 サンプルフォルダで、次を実行します。
 

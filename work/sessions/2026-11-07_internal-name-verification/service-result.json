@@ -1,0 +1,17 @@
+{
+  "Passed": true,
+  "ServiceName": "DotNetFaultInjectionAgentProbe",
+  "TargetHash": "0691FA3A111348E65E62AE5EC8D47EA2FF81F8CD8E8F1B9C3FD656695CA3BC9A",
+  "OS": "Microsoft Windows NT 10.0.26100.0",
+  "baselineRunning": true,
+  "baselineLog": "attempt=1 InvalidOperationException: ExecuteNonQuery には Connection が開かれていて使用可能なことが必要です。現在の接続の状態は '終了\" です。\r\nattempt=2 InvalidOperationException: ExecuteNonQuery には Connection が開かれていて使用可能なことが必要です。現在の接続の状態は '終了\" です。\r\n",
+  "injectedRunning": true,
+  "injectedLog": "fault fired: methodToken=100663311 timeout-before-send\r\nattempt=1 TimeoutException: Injected before ExecuteNonQuery.\r\nattempt=2 InvalidOperationException: ExecuteNonQuery には Connection が開かれていて使用可能なことが必要です。現在の接続の状態は '終了\" です。\r\n",
+  "AgentLog": "plan accepted: 1 rule(s) validated\r\nIL rewritten: methodToken=100663311\r\n",
+  "BinaryUnchanged": true,
+  "SyncRunning": true,
+  "SyncLog": "ordinary: first read=False; recheck after publication=True\r\nvolatile: first read=False; recheck after publication=True\r\n",
+  "SyncBinaryUnchanged": true,
+  "SyncRemoved": true,
+  "ServiceRemoved": true
+}

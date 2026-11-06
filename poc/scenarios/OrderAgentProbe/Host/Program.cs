@@ -11,7 +11,7 @@ internal static class Probe
     [STAThread]
     private static void Main(string[] args)
     {
-        if (args.Length != 3 || !System.Text.RegularExpressions.Regex.IsMatch(args[1], @"\AChaosOrderAgent_[0-9a-f]{32}\z") ||
+        if (args.Length != 3 || !System.Text.RegularExpressions.Regex.IsMatch(args[1], @"\ADotNetFaultInjectionAgentOrder_[0-9a-f]{32}\z") ||
             (args[2] != "baseline" && args[2] != "inject" && args[2] != "overlap"))
             throw new ArgumentException("Expected sample EXE, unique test DB and baseline, inject or overlap mode.");
         var db = args[1];
@@ -38,7 +38,7 @@ internal static class Probe
                 ? "IF EXISTS (SELECT 1 FROM dbo.Received WHERE SessionId = @@SPID) WAITFOR DELAY '00:00:07'; "
                 : "";
             Exec(connection, "CREATE" + signature + gate + "INSERT dbo.Received VALUES (@@SPID)");
-            GC.KeepAlive(typeof(ChaosOrderBridge.Dispatch).Assembly);
+            GC.KeepAlive(typeof(DotNetFaultInjectionAgent.OrderBridge.Dispatch).Assembly);
             var type = Assembly.LoadFrom(args[0]).GetType("MultithreadedInMemoryTableInsert.MultithreadedOrderInsertMain", true);
             using (var form = (Form)Activator.CreateInstance(type))
             {
@@ -82,11 +82,11 @@ internal static class Probe
                 var after = Count(connection);
                 Console.WriteLine("Worker alive: " + worker.IsAlive);
                 Console.WriteLine("Error flag: " + Field(form, "errorHasOccurred"));
-                Console.WriteLine("Injected TimeoutException recorded: " + details.Contains("System.TimeoutException: Windows Chaos Agent: timeout before SQL send."));
+                Console.WriteLine("Injected TimeoutException recorded: " + details.Contains("System.TimeoutException: DotNet Fault Injection Agent: timeout before SQL send."));
                 Console.WriteLine("Visible error dialog: " + dialog);
                 Console.WriteLine("Insert button label: " + button.Text);
                 Console.WriteLine("Rows during fault: " + after);
-                if (worker.IsAlive || !details.Contains("System.TimeoutException: Windows Chaos Agent: timeout before SQL send.") || after != 0)
+                if (worker.IsAlive || !details.Contains("System.TimeoutException: DotNet Fault Injection Agent: timeout before SQL send.") || after != 0)
                     throw new Exception("Unexpected probe result.");
             }
         }

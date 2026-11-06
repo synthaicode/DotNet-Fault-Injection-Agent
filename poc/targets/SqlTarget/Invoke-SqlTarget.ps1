@@ -28,7 +28,7 @@ $start.RedirectStandardOutput = $true
 $start.RedirectStandardInput = [bool]$ControlSequence.Count
 $start.RedirectStandardError = $true
 foreach ($key in @($start.Environment.Keys)) {
-    if ($key -match '^(COR_(ENABLE_PROFILING|PROFILER)|MicrosoftInstrumentationEngine_|WINDOWS_CHAOS_)') {
+    if ($key -match '^(COR_(ENABLE_PROFILING|PROFILER)|MicrosoftInstrumentationEngine_|DOTNET_FAULT_INJECTION_)') {
         $null = $start.Environment.Remove($key)
     }
 }
@@ -36,9 +36,9 @@ $start.Environment['COR_ENABLE_PROFILING'] = '1'
 $start.Environment['COR_PROFILER'] = '{324F817A-7420-4E6D-B3C1-143FBED6D855}'
 $start.Environment['COR_PROFILER_PATH'] = $enginePath
 $start.Environment['COR_PROFILER_PATH_64'] = $enginePath
-$start.Environment['MicrosoftInstrumentationEngine_ConfigPath64_Chaos'] = $configPath
+$start.Environment['MicrosoftInstrumentationEngine_ConfigPath64_DotNetFaultInjectionAgent'] = $configPath
 $start.Environment['MicrosoftInstrumentationEngine_DisableCodeSignatureValidation'] = '1'
-$start.Environment['WINDOWS_CHAOS_PLAN'] = $planPath
+$start.Environment['DOTNET_FAULT_INJECTION_PLAN'] = $planPath
 if ($Concurrent) {
     $start.ArgumentList.Add('--concurrent')
 }

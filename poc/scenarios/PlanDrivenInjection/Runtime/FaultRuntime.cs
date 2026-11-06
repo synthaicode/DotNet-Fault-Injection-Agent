@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
-namespace WindowsChaosAgent.Runtime;
+namespace DotNetFaultInjectionAgent.Runtime;
 
 public static class FaultRuntime
 {
@@ -17,8 +17,8 @@ public static class FaultRuntime
 
     private static State Load()
     {
-        var path = Environment.GetEnvironmentVariable("WINDOWS_CHAOS_PLAN")
-            ?? throw new InvalidOperationException("WINDOWS_CHAOS_PLAN is missing.");
+        var path = Environment.GetEnvironmentVariable("DOTNET_FAULT_INJECTION_PLAN")
+            ?? throw new InvalidOperationException("DOTNET_FAULT_INJECTION_PLAN is missing.");
         var bytes = InjectionPlan.ReadFile(path);
         return new State(InjectionPlan.Parse(bytes), InjectionPlan.Hash(bytes));
     }

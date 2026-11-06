@@ -8,7 +8,7 @@ import sys
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-IMAGE = sys.argv[1] if len(sys.argv) > 1 else "windows-chaos-runtime:local"
+IMAGE = sys.argv[1] if len(sys.argv) > 1 else "dotnet-fault-injection-runtime:local"
 OUTPUT = ROOT / "artifacts" / ("verify-" + uuid.uuid4().hex)
 OUTPUT.mkdir(parents=True)
 PLANNER = ROOT / "Planner/bin/Release/net8.0/Planner.dll"
@@ -30,10 +30,10 @@ for project in ("Planner/Planner.csproj", "Runtime/Runtime.csproj", "Probe/Probe
 command(["dotnet", "publish", str(ROOT / "Probe/Probe.csproj"), "-c", "Release",
          "--no-restore", "-o", str(ASSEMBLY.parent)])
 runtime = ROOT / "Runtime/bin/Release/net8.0"
-shutil.copy2(runtime / "WindowsChaosAgent.Runtime.dll", ASSEMBLY.parent)
-shutil.copy2(runtime / "WindowsChaosAgent.Runtime.deps.json", ROOT / "Native/bin")
+shutil.copy2(runtime / "DotNetFaultInjectionAgent.Runtime.dll", ASSEMBLY.parent)
+shutil.copy2(runtime / "DotNetFaultInjectionAgent.Runtime.deps.json", ROOT / "Native/bin")
 deps = json.loads((ASSEMBLY.parent / "Probe.deps.json").read_text(encoding="utf-8"))
-assert not any(name.startswith("WindowsChaosAgent.Runtime/") for name in deps["libraries"])
+assert not any(name.startswith("DotNetFaultInjectionAgent.Runtime/") for name in deps["libraries"])
 base_file = OUTPUT / "base.json"
 command(["dotnet", str(PLANNER), "plan", str(ASSEMBLY), str(SOURCE), str(LINE), str(base_file)])
 BASE = json.loads(base_file.read_text())
@@ -57,10 +57,10 @@ def execute(name, plan, environment="enabled", profiling=True, raw=None, mutate=
         for value in ["CORECLR_ENABLE_PROFILING=1",
                       "CORECLR_PROFILER={324F817A-7420-4E6D-B3C1-143FBED6D855}",
                       "CORECLR_PROFILER_PATH=/profiler/libInstrumentationEngine.so",
-                      "MicrosoftInstrumentationEngine_ConfigPath64_Chaos=/profiler/Rewrite.xml",
+                      "MicrosoftInstrumentationEngine_ConfigPath64_DotNetFaultInjectionAgent=/profiler/Rewrite.xml",
                       "MicrosoftInstrumentationEngine_DisableCodeSignatureValidation=1",
-                      "DOTNET_ADDITIONAL_DEPS=/profiler/WindowsChaosAgent.Runtime.deps.json",
-                      "WINDOWS_CHAOS_PLAN=/test/plan.json", f"CHAOS_TEST_CASE={environment}"]:
+                      "DOTNET_ADDITIONAL_DEPS=/profiler/DotNetFaultInjectionAgent.Runtime.deps.json",
+                      "DOTNET_FAULT_INJECTION_PLAN=/test/plan.json", f"CHAOS_TEST_CASE={environment}"]:
             args.extend(["-e", value])
     args.extend([IMAGE, "timeout", "30s", "dotnet", "Probe.dll", "/test/files", "12"])
     if mutate:
@@ -92,6 +92,16 @@ rows, events, log = execute("plan-changed-after-load", BASE, mutate=True)
 assert not events and all("plan changed after instrumentation" in row["error"] for row in rows)
 valid("environment-mismatch", BASE, 0, environment="different")
 valid("one-fault-12-concurrent-calls", BASE, 1)
+# Optional upgrade check: an old runtime beside the new DLL must not take over.
+if len(sys.argv) > 2:
+    legacy = ASSEMBLY.parent / "WindowsChaosAgent.Runtime.dll"
+    if legacy.exists():
+        raise AssertionError("Use a clean deployment for the legacy coexistence check")
+    shutil.copy2(pathlib.Path(sys.argv[2]).resolve(), legacy)
+    try:
+        valid("legacy-runtime-beside-new-runtime", BASE, 1)
+    finally:
+        legacy.unlink()
 plan = copy.deepcopy(BASE)
 plan["maxFirings"] = 0
 valid("zero-budget", plan, 0)

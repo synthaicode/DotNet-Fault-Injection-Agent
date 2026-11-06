@@ -3,6 +3,12 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DotNetFaultInjectionAgent.Tool</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <PackageId>DotNetFaultInjectionAgent.Tool</PackageId>
+    <ToolCommandName>dotnet-fault-injection</ToolCommandName>
+    <Version>0.1.0-preview.4</Version>
+    <Description>DotNet Fault Injection Agent source analysis and injection plan verification.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../scenarios/PlanDrivenInjection/Planner/Planner.csproj" />
