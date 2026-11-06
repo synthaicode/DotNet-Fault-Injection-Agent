@@ -1,0 +1,64 @@
+name: Verify NuGet.org release
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: 'Successful scanned candidate workflow run ID'
+        required: true
+        type: string
+      package_version:
+        description: 'Exact NuGet.org version'
+        required: true
+        default: '0.1.0'
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-public-feed:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-verification
+          path: artifacts/verified-candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify repository signature, unchanged payload and actual execution
+        env:
+          RELEASE_VERSION: ${{ inputs.package_version }}
+        run: |
+          if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid release version.' }
+          ./tools/Test-Package.ps1 -Package "./artifacts/verified-candidate/packages/DotNetFaultInjectionAgent.Tool.$env:RELEASE_VERSION.nupkg" -SourceUrl https://api.nuget.org/v3/index.json -AllowNuGetRepositorySignature
+      - name: Run independent Linux injection suite with public package
+        if: runner.os == 'Linux'
+        run: |
+          $summary = Get-Content -Raw (Get-ChildItem artifacts/package-tests -Filter summary.json -Recurse | Select-Object -First 1).FullName | ConvertFrom-Json
+          $env:FAULT_RUNTIME_DIRECTORY = $summary.RuntimeDirectory
+          docker build -t dotnet-fault-injection-runtime:local src/Native/Linux
+          if ($LASTEXITCODE -ne 0) { throw 'Test image build failed.' }
+          python3 tests/PlanDrivenInjection/verify.py dotnet-fault-injection-runtime:local
+          if ($LASTEXITCODE -ne 0) { throw 'Public package Linux injection suite failed.' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nuget-verification-${{ matrix.os }}
+          path: |
+            artifacts/package-tests/*/summary.json
+            artifacts/package-tests/*/*-result.json
+            artifacts/package-tests/*/linux-runtime.log
+            tests/PlanDrivenInjection/artifacts/*/summary.json
