@@ -19,7 +19,7 @@
     <PackageProjectUrl>https://github.com/synthaicode/DotNet-Fault-Injection-Agent</PackageProjectUrl>
     <!-- The .NET tool exports this script explicitly; it is not a NuGet install.ps1 hook. -->
     <NoWarn>$(NoWarn);NU5111</NoWarn>
-    <PackageTags>dotnet;fault-injection;testing</PackageTags>
+    <PackageTags>dotnet;fault-injection;testing;ai-assist</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="../../artifacts/runtime/win-x64/*" Link="runtime/win-x64/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Pack="false" />

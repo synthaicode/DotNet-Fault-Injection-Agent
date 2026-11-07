@@ -1,0 +1,115 @@
+name: Publish NuGet.org release
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: 'Successful scanned and tested candidate run ID'
+        required: true
+        type: string
+      package_version:
+        description: 'Exact package version'
+        required: true
+        default: '0.1.0'
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: nuget-org-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Require a successful candidate from this repository and merged source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          RELEASE_VERSION: ${{ inputs.package_version }}
+        run: |
+          if ($env:CANDIDATE_RUN_ID -notmatch '^\d+$' -or $env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid release inputs.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:CANDIDATE_RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.path -ne '.github/workflows/test-package.yml' -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Candidate workflow did not succeed in this repository.' }
+          git merge-base --is-ancestor $run.head_sha HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate source has not been merged into main.' }
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*verification'
+          path: artifacts/candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-virus-scan
+          path: artifacts/scan
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify scanned package identity, metadata and both platform results
+        env:
+          RELEASE_VERSION: ${{ inputs.package_version }}
+        run: |
+          $package = "artifacts/candidate/package-verification/packages/DotNetFaultInjectionAgent.Tool.$env:RELEASE_VERSION.nupkg"
+          $hash = (Get-FileHash $package).Hash
+          $scans = @(Get-ChildItem artifacts/scan -Filter summary.json -Recurse)
+          if ($scans.Count -ne 1) { throw 'Expected one virus scan report.' }
+          $scan = Get-Content -Raw $scans[0].FullName | ConvertFrom-Json
+          if ($scan.Result -ne 'passed' -or $scan.Sha256 -ne $hash -or -not $scan.ArchiveAndExtractedFiles -or [DateTime]::Parse($scan.ScannedAtUtc).ToUniversalTime() -lt [DateTime]::UtcNow.AddDays(-3)) { throw 'Missing, stale or mismatched virus scan.' }
+          foreach ($platform in @('windows','linux')) {
+            $reports = @(Get-ChildItem "artifacts/candidate/$platform-consumer-verification" -Filter summary.json -Recurse | ForEach-Object { Get-Content -Raw $_.FullName | ConvertFrom-Json } | Where-Object PackageId -EQ 'DotNetFaultInjectionAgent.Tool')
+            if ($reports.Count -ne 1 -or $reports[0].Sha256 -ne $hash -or $reports[0].Version -ne $env:RELEASE_VERSION -or -not $reports[0].ContentVerified -or -not $reports[0].PlanVerified) { throw "Missing or mismatched $platform test result." }
+          }
+          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $package))
+          try {
+            $entry = @($zip.Entries | Where-Object FullName -Like '*.nuspec')
+            if ($entry.Count -ne 1) { throw 'Expected one package manifest.' }
+            $reader = [IO.StreamReader]::new($entry[0].Open())
+            try { [xml]$metadata = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            if ($metadata.package.metadata.id -ne 'DotNetFaultInjectionAgent.Tool' -or $metadata.package.metadata.version -ne $env:RELEASE_VERSION -or 'ai-assist' -notin ($metadata.package.metadata.tags -split '\s+')) { throw 'Package ID, version or ai-assist tag mismatch.' }
+          } finally { $zip.Dispose() }
+          "RELEASE_PACKAGE=$package" >> $env:GITHUB_ENV
+          "RELEASE_SHA256=$hash" >> $env:GITHUB_ENV
+      - name: NuGet trusted login
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: commander
+      - name: Publish the verified archive without repacking
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: |
+          if ((Get-FileHash $env:RELEASE_PACKAGE).Hash -ne $env:RELEASE_SHA256) { throw 'Package changed before publication.' }
+          dotnet nuget push $env:RELEASE_PACKAGE --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --timeout 120
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet.org publication failed.' }
+          "Published candidate SHA-256: $env:RELEASE_SHA256" >> $env:GITHUB_STEP_SUMMARY
+      - name: Wait for public package availability
+        env:
+          RELEASE_VERSION: ${{ inputs.package_version }}
+        run: |
+          $uri = "https://api.nuget.org/v3-flatcontainer/dotnetfaultinjectionagent.tool/$env:RELEASE_VERSION/dotnetfaultinjectionagent.tool.$env:RELEASE_VERSION.nupkg"
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            try { $response = Invoke-WebRequest -Uri $uri -Method Head; if ($response.StatusCode -eq 200) { exit 0 } }
+            catch { if ([int]$_.Exception.Response.StatusCode -ne 404) { throw } }
+            Start-Sleep -Seconds 10
+          }
+          throw 'NuGet.org indexing did not complete within five minutes.'
+  verify:
+    needs: publish
+    uses: ./.github/workflows/verify-nuget.yml
+    with:
+      candidate_run_id: ${{ inputs.candidate_run_id }}
+      package_version: ${{ inputs.package_version }}

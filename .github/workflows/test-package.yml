@@ -6,6 +6,11 @@ on:
         description: 'Candidate version to verify through GitHub Packages (empty creates a unique test version)'
         required: false
         type: string
+      candidate_only:
+        description: 'Verify an archive without publishing it to the GitHub test feed'
+        required: false
+        default: false
+        type: boolean
   push:
     branches: ['package-test/**']
 
@@ -121,6 +126,7 @@ jobs:
         run: |
           ./tools/Scan-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg"
       - name: Publish scanned package to GitHub Packages
+        if: ${{ !inputs.candidate_only }}
         shell: pwsh
         env:
           TEST_PACKAGE_VERSION: ${{ needs.windows-package.outputs.version }}
@@ -157,9 +163,11 @@ jobs:
         shell: pwsh
         env:
           TEST_PACKAGE_VERSION: ${{ needs.windows-package.outputs.version }}
+          CANDIDATE_ONLY: ${{ inputs.candidate_only }}
           NuGetPackageSourceCredentials_packagefeed: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
         run: |
-          ./tools/Test-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl https://nuget.pkg.github.com/synthaicode/index.json
+          $sourceUrl = if ($env:CANDIDATE_ONLY -eq 'true') { '' } else { 'https://nuget.pkg.github.com/synthaicode/index.json' }
+          ./tools/Test-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl $sourceUrl
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -189,9 +197,11 @@ jobs:
       - name: Fetch package from GitHub and execute Linux payload
         env:
           TEST_PACKAGE_VERSION: ${{ needs.windows-package.outputs.version }}
+          CANDIDATE_ONLY: ${{ inputs.candidate_only }}
           NuGetPackageSourceCredentials_packagefeed: Username=${{ github.actor }};Password=${{ secrets.GITHUB_TOKEN }};ValidAuthenticationTypes=Basic
         run: |
-          ./tools/Test-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl https://nuget.pkg.github.com/synthaicode/index.json
+          $sourceUrl = if ($env:CANDIDATE_ONLY -eq 'true') { '' } else { 'https://nuget.pkg.github.com/synthaicode/index.json' }
+          ./tools/Test-Package.ps1 -Package "./artifacts/github-published/packages/DotNetFaultInjectionAgent.Tool.$env:TEST_PACKAGE_VERSION.nupkg" -SourceUrl $sourceUrl
       - name: Run independent injection suite using exported payload
         run: |
           $summaryPath = Get-ChildItem artifacts/package-tests -Filter summary.json -Recurse | Select-Object -First 1
