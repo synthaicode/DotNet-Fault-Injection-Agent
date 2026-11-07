@@ -1,0 +1,102 @@
+[
+  {
+    "case": "disabled",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "plan-changed-after-load",
+    "errors": 12,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "environment-mismatch",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "one-fault-12-concurrent-calls",
+    "errors": 1,
+    "firings": 1,
+    "passed": true
+  },
+  {
+    "case": "zero-budget",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "start-third-two-firings",
+    "errors": 2,
+    "firings": 2,
+    "passed": true
+  },
+  {
+    "case": "timeout-from-plan",
+    "errors": 1,
+    "firings": 1,
+    "passed": true
+  },
+  {
+    "case": "delay-from-plan",
+    "errors": 0,
+    "firings": 1,
+    "passed": true
+  },
+  {
+    "case": "wrong-hash",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "wrong-mvid",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "unsupported-fault",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "unknown-field",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "missing-budget",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "wrong-member-name",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "duplicate-key",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "duplicate-environment-key",
+    "errors": 0,
+    "firings": 0,
+    "passed": true
+  },
+  {
+    "case": "changed-source-rejected",
+    "passed": true
+  }
+]
