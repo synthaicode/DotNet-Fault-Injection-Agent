@@ -1,0 +1,16 @@
+{
+  "PackageId": "DotNetFaultInjectionAgent.Tool",
+  "Version": "0.1.0",
+  "Sha256": "B7A5A58709E1C78304BF7C1EAF1C02898AA9C7A3120B0FFBC5BF7F412971012D",
+  "FetchedSha256": "E5DC4F0DC55819D0F400F87349FC6DAE0DB7F9F49033D76718EC2016A3868DCA",
+  "RepositorySignatureVerified": true,
+  "PayloadIdentityVerified": true,
+  "ContentVerified": true,
+  "CleanInstall": true,
+  "RuntimeDirectory": "D:\\a\\DotNet-Fault-Injection-Agent\\DotNet-Fault-Injection-Agent\\artifacts\\package-tests\\8b0ac9e709684e72bf4b24ca2bee7e9f\\exported-runtime",
+  "GuideVerified": true,
+  "Capabilities": true,
+  "PlanCreated": true,
+  "PlanVerified": true,
+  "ToolDirectory": "D:\\a\\DotNet-Fault-Injection-Agent\\DotNet-Fault-Injection-Agent\\artifacts\\package-tests\\8b0ac9e709684e72bf4b24ca2bee7e9f\\tool"
+}

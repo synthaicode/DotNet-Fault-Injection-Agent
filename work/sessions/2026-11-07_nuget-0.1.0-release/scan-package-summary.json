@@ -1,0 +1,10 @@
+{
+  "Package": "DotNetFaultInjectionAgent.Tool.0.1.0.nupkg",
+  "Sha256": "B7A5A58709E1C78304BF7C1EAF1C02898AA9C7A3120B0FFBC5BF7F412971012D",
+  "Engine": "ClamAV",
+  "EngineVersion": "ClamAV 1.5.4/28176/Sat Nov  7 06:24:18 2026",
+  "Definitions": "ClamAV 1.5.4/28176/Sat Nov  7 06:24:18 2026",
+  "ScannedAtUtc": "2026-11-07T12:48:41.5228188Z",
+  "ArchiveAndExtractedFiles": true,
+  "Result": "passed"
+}
