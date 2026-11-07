@@ -31,7 +31,7 @@ Both win-x64 and linux-x64 execution payloads are bundled. Their launchers and p
 
 Turn hard-to-reproduce failures in .NET applications into repeatable tests.
 
-![An AI assistant creates an injection plan; the agent executes it against the target application.](docs/assets/dotnet-fault-injection-agent-overview-en.png)
+![An AI assistant creates an injection plan; the agent executes it against the target application.](https://raw.githubusercontent.com/synthaicode/DotNet-Fault-Injection-Agent/main/docs/assets/dotnet-fault-injection-agent-overview-en.png)
 
 Describe the behavior you want to test to the AI assistant in your environment. It inspects the target binary and matching source/Portable PDB, identifies a call site, and creates a verified JSON injection plan. The injection tools execute that plan; the user checks application behavior, logs and external state.
 
