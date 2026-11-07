@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([Parameter(Mandatory)][string] $Package, [string] $SourceUrl)
+param([Parameter(Mandatory)][string] $Package, [string] $SourceUrl, [switch] $AllowNuGetRepositorySignature)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $packagePath = (Resolve-Path -LiteralPath $Package).ProviderPath
@@ -13,6 +13,7 @@ $archive = [IO.Compression.ZipFile]::OpenRead($packagePath)
 try {
     $names = @($archive.Entries.FullName)
     foreach ($required in @('README.md','LICENSE','AI-plan-guide.md','schemas/injection-plan.v3.schema.json',
+        'licenses/Roslyn.LICENSE.txt','licenses/Roslyn.ThirdPartyNotices.rtf',
         'tools/net10.0/any/DotNetFaultInjectionAgent.Tool.dll',
         'tools/net10.0/any/Planner.dll', 'tools/net10.0/any/Microsoft.CodeAnalysis.dll',
         'tools/net10.0/any/Microsoft.CodeAnalysis.CSharp.dll','tools/net10.0/any/DotnetToolSettings.xml')) {
@@ -47,7 +48,32 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Clean tool installation failed.' }
 } finally { $env:NUGET_PACKAGES = $originalCache }
 $installedArchive = @(Get-ChildItem -LiteralPath $toolPath -Force -Recurse -File -Filter "$($id.ToLowerInvariant()).$version.nupkg")
-if ($installedArchive.Count -ne 1 -or (Get-FileHash $installedArchive[0].FullName).Hash -ne (Get-FileHash $packagePath).Hash) {
+if ($installedArchive.Count -ne 1) { throw 'Expected exactly one installed package archive.' }
+$signatureVerified = $false
+if ($AllowNuGetRepositorySignature) {
+    if ($SourceUrl -ne 'https://api.nuget.org/v3/index.json') { throw 'Repository signing mode is restricted to NuGet.org.' }
+    & dotnet nuget verify $installedArchive[0].FullName --all
+    if ($LASTEXITCODE -ne 0) { throw 'NuGet.org package signature verification failed.' }
+    $candidateZip = [IO.Compression.ZipFile]::OpenRead($packagePath)
+    $fetchedZip = [IO.Compression.ZipFile]::OpenRead($installedArchive[0].FullName)
+    try {
+        $candidateEntries = @($candidateZip.Entries | Where-Object FullName -NE '.signature.p7s')
+        $fetchedEntries = @($fetchedZip.Entries | Where-Object FullName -NE '.signature.p7s')
+        if ($candidateEntries.Count -ne $fetchedEntries.Count -or
+            @($fetchedZip.Entries | Where-Object FullName -EQ '.signature.p7s').Count -ne 1) { throw 'Unexpected signed package entries.' }
+        foreach ($entry in $candidateEntries) {
+            $matching = @($fetchedEntries | Where-Object FullName -CEQ $entry.FullName)
+            if ($matching.Count -ne 1) { throw "Signed package entry mismatch: $($entry.FullName)" }
+            $left = $entry.Open(); $right = $matching[0].Open()
+            try {
+                $leftHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($left))
+                $rightHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($right))
+                if ($leftHash -ne $rightHash) { throw "Signed package payload changed: $($entry.FullName)" }
+            } finally { $left.Dispose(); $right.Dispose() }
+        }
+    } finally { $candidateZip.Dispose(); $fetchedZip.Dispose() }
+    $signatureVerified = $true
+} elseif ((Get-FileHash $installedArchive[0].FullName).Hash -ne (Get-FileHash $packagePath).Hash) {
     throw 'The package fetched from the selected feed differs from the tested package.'
 }
 $command = Join-Path $toolPath $(if ($IsWindows) { 'dotnet-fault-injection.exe' } else { 'dotnet-fault-injection' })
@@ -133,6 +159,7 @@ if ($IsLinux) {
     if ($targetHash -ne (Get-FileHash $binary).Hash) { throw 'Linux target binary changed.' }
 }
 $summary = [pscustomobject]@{ PackageId=$id; Version=$version; Sha256=(Get-FileHash $packagePath).Hash;
+    FetchedSha256=(Get-FileHash $installedArchive[0].FullName).Hash; RepositorySignatureVerified=$signatureVerified; PayloadIdentityVerified=$true;
     ContentVerified=$true; CleanInstall=$true; RuntimeDirectory=$runtimeDirectory; GuideVerified=$true; Capabilities=$true; PlanCreated=$true; PlanVerified=$true; ToolDirectory=$toolPath }
 $summary | ConvertTo-Json | Set-Content (Join-Path $output 'summary.json') -Encoding utf8
 $summary

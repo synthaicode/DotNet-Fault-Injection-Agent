@@ -2,16 +2,16 @@
 
 ## Download and use the bundled Windows runtime
 
-After this package is published to NuGet.org, install the .NET tool and export the execution files:
+Install the .NET tool from NuGet.org and export the execution files:
 
 ```powershell
-dotnet tool install --global DotNetFaultInjectionAgent.Tool --prerelease
+dotnet tool install --global DotNetFaultInjectionAgent.Tool --version 0.1.0
 dotnet-fault-injection guide
 dotnet-fault-injection runtime list
 dotnet-fault-injection runtime export --output ./fault-runtime
 ```
 
-Before publication, use the same installation command with `--add-source <local-package-directory>` and `--version 0.1.0-preview.4` instead of `--prerelease`. The download/export workflow is validated against a locally built NuGet package; this documentation does not imply NuGet.org publication has occurred.
+For a local candidate, use `--add-source <local-package-directory>` with its exact `--version`. GitHub Packages remains the test feed; NuGet.org is the public release feed.
 
 `fault-runtime` must be a new directory. Export verifies the payload checksums and does not replace an existing directory. It contains the Windows x64 Engine, Rewrite.dll, Rewrite.xml, Invoke-FaultInjection.ps1, provenance/checksum manifest and dependency license notices. No native compilation or repository checkout is required on the user's machine.
 
@@ -31,7 +31,7 @@ Both win-x64 and linux-x64 execution payloads are bundled. Their launchers and p
 
 Turn hard-to-reproduce failures in .NET applications into repeatable tests.
 
-![An AI assistant creates an injection plan; the agent executes it against the target application.](docs/assets/dotnet-fault-injection-agent-overview-en.png)
+![An AI assistant creates an injection plan; the agent executes it against the target application.](https://github.com/synthaicode/DotNet-Fault-Injection-Agent/blob/main/docs/assets/dotnet-fault-injection-agent-overview-en.png?raw=true)
 
 Describe the behavior you want to test to the AI assistant in your environment. It inspects the target binary and matching source/Portable PDB, identifies a call site, and creates a verified JSON injection plan. The injection tools execute that plan; the user checks application behavior, logs and external state.
 
@@ -53,7 +53,7 @@ dotnet-fault-injection dotnet plan target.dll Program.cs 22 plan.json
 dotnet-fault-injection dotnet verify target.dll Program.cs 22 plan.json
 ```
 
-See [package preparation](docs/packaging/README.md) for local builds and installation. NuGet.org publication is a separate release step.
+See [package preparation](docs/packaging/README.md) for maintainer builds, required virus scans and publication verification.
 
 ## Supported scope
 
@@ -131,7 +131,7 @@ Plan-format numbers are internal compatibility details. Existing `v3` and unpref
 
 The same NuGet tool package includes both win-x64 and linux-x64 execution files. `runtime export --output <new-directory>` selects the current x64 OS; use `--rid linux-x64` or `--rid win-x64` to export explicitly, including from another OS. Existing directories are rejected and each payload's checksums are verified.
 
-On Linux, after installing the test package from the configured GitHub Packages feed:
+On Linux, after installing the tool from NuGet.org:
 
 ```bash
 dotnet-fault-injection runtime list

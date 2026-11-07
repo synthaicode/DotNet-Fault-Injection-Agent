@@ -1,6 +1,11 @@
 name: Publish and verify test package
 on:
   workflow_dispatch:
+    inputs:
+      package_version:
+        description: 'Candidate version to verify through GitHub Packages (empty creates a unique test version)'
+        required: false
+        type: string
   push:
     branches: ['package-test/**']
 
@@ -67,8 +72,14 @@ jobs:
           path: artifacts/runtime/linux-x64
       - name: Pack and verify locally
         id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.package_version }}
         run: |
           $version = "0.1.0-github.${env:GITHUB_RUN_ID}.${env:GITHUB_RUN_ATTEMPT}"
+          if ($env:REQUESTED_VERSION) {
+            if ($env:REQUESTED_VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid package version.' }
+            $version = $env:REQUESTED_VERSION
+          }
           "TEST_PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
           "version=$version" >> $env:GITHUB_OUTPUT
           ./tools/Pack.ps1 -Version $version -CandidateOnly

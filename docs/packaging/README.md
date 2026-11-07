@@ -18,7 +18,7 @@ Clone microsoft/CLRInstrumentationEngine and checkout revision 0055c6fce2fe16770
 ./tools/Build-WindowsRuntime.ps1 -EngineSource <pinned-source-directory> -ClrHeaders <cor.h-directory> -JsonHeaders <nlohmann-parent-directory>
 dotnet build DotNetFaultInjectionAgent.slnx -c Release
 ./tools/Pack.ps1
-./tools/Test-Package.ps1 -Package ./artifacts/packages/DotNetFaultInjectionAgent.Tool.0.1.0-preview.4.nupkg
+./tools/Test-Package.ps1 -Package ./artifacts/packages/DotNetFaultInjectionAgent.Tool.0.1.0.nupkg
 ```
 
 Use `./tools/Pack.ps1 -Version <version>` to select a version. Test-Package installs only the specified package into a new tool directory using an empty package cache and a local-only feed. Existing global tools are not changed.
@@ -29,7 +29,7 @@ Package metadata is maintained in the Tool csproj. The package README is [nuget-
 
 The project uses the [MIT License](../../LICENSE), also declared through NuGet's SPDX license metadata. Dependencies retain their own licenses.
 
-Confirm the publication version, ownership of the NuGet.org package ID and publishing credentials. The GitHub repository is currently private: decide where package users can read the linked documentation. The Windows Engine provenance and notices for this package are documented below. Linux payload build, licenses and platform conditions are described below.
+Confirm the publication version, ownership of the NuGet.org package ID and publishing credentials. The GitHub repository is public, so package users can read the linked documentation. The Windows Engine provenance and notices for this package are documented below. Linux payload build, licenses and platform conditions are described below.
 
 Build release packages from the selected source revision and rerun package verification. The preparation scripts do not push to NuGet.org.
 
@@ -71,3 +71,11 @@ Package creation includes a virus scan. On Windows, Pack.ps1 updates Microsoft D
 Actions uses Pack.ps1 -CandidateOnly to build an unpublished candidate, then transfers that exact archive to the required Ubuntu scan-and-publish job. The job updates ClamAV definitions with freshclam and scans the archive and extracted files. Encrypted content and exceeded scan limits are failures; definitions older than three days are rejected. Publication requires a passing report with the same archive SHA-256. Definition update/scan failures stop publication and both feed-consumer jobs. The package-virus-scan artifact preserves the report and log.
 
 On Linux, update ClamAV definitions successfully before calling Pack.ps1 or Scan-Package.ps1. CandidateOnly is solely an intermediate build step; it is not a successful scanned release. Do not publish such a candidate without scanning it. A clean scan records the scanner's result at that time and is not a guarantee of the absence of malware.
+
+## NuGet.org release 0.1.0
+
+The initial public release is 0.1.0. The manual test workflow accepts package_version to build that exact version and verify it through GitHub Packages before NuGet.org publication. Leave it empty for a unique test version. Both platform feed-consumer jobs and the required virus scan must succeed. Preserve the original nupkg and its SHA-256; do not repack or change metadata after verification.
+
+Publish that verified archive through the authenticated NuGet.org upload page or an appropriately scoped NuGet API key. GITHUB_TOKEN only publishes to GitHub Packages, not NuGet.org. After NuGet.org validation/indexing, install using only https://api.nuget.org/v3/index.json and a new cache, check guide/capabilities/runtime export and run the same platform injection tests. NuGet.org repository signing changes archive bytes; compare all package payload entries against the verified candidate and validate signatures instead of requiring the unsigned candidate's archive hash to match.
+
+The package includes Roslyn's MIT license and ThirdPartyNotices from Microsoft.CodeAnalysis.Common/CSharp 5.0.0 (source revision 6c4a46a31302167b425d5e0a31ea83c9a9aa1d09), in addition to each native runtime's notices. This does not alter the project's MIT license.
