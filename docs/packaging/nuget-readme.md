@@ -1,5 +1,13 @@
 # DotNet Fault Injection Agent — planning and Windows/Linux execution
 
+## Supported fault injection targets
+
+- **.NET Framework 4.8 / Windows x64:** Dedicated fixtures and the order host. General compatibility with arbitrary existing .NET Framework applications is not guaranteed. Windows services require service-specific startup configuration.
+- **.NET 10 / Windows x64:** The dedicated CoreFileTarget fixture only.
+- **.NET 8 / Linux x64:** Generic external-call injection.
+
+The CLI requires .NET 10. Target applications can keep their existing supported runtime and do not need to migrate to .NET 10. NuGet's **Frameworks** tab describes the CLI's target framework (`net10.0`); `net48` is supported within the fault injection scope above and is not included as a package target framework.
+
 ## Download and use the bundled Windows runtime
 
 Install the .NET tool from NuGet.org and export the execution files:
