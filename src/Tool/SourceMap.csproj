@@ -10,7 +10,7 @@
     <ToolCommandName>dotnet-fault-injection</ToolCommandName>
     <Version>0.1.0</Version>
     <PackageReleaseNotes>Initial release: AI planning guide, verified injection plans and bundled Windows/Linux x64 execution payloads. Requires .NET 10 for the CLI; see README for target runtime support and limitations.</PackageReleaseNotes>
-    <Description>DotNet Fault Injection Agent planning CLI and bundled Windows/Linux x64 execution tools.</Description>
+    <Description>Fault injection planning CLI with bundled Windows and Linux x64 runtimes. Supports .NET Framework 4.8 on Windows x64 for dedicated fixtures and the order host. General compatibility with arbitrary existing .NET Framework applications is not guaranteed. Windows services require service-specific startup configuration. .NET 10 on Windows x64 is supported for the dedicated CoreFileTarget fixture only. .NET 8 on Linux x64 supports generic external-call injection. The CLI requires .NET 10 (net10.0); target applications can keep their supported runtime. net48 is a fault injection target within the stated scope and is not a CLI target framework.</Description>
     <Authors>synthaicode</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -19,7 +19,7 @@
     <PackageProjectUrl>https://github.com/synthaicode/DotNet-Fault-Injection-Agent</PackageProjectUrl>
     <!-- The .NET tool exports this script explicitly; it is not a NuGet install.ps1 hook. -->
     <NoWarn>$(NoWarn);NU5111</NoWarn>
-    <PackageTags>dotnet;fault-injection;testing;ai-assist</PackageTags>
+    <PackageTags>dotnet;fault-injection;testing;ai-assist;dotnet-framework;net48</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="../../artifacts/runtime/win-x64/*" Link="runtime/win-x64/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Pack="false" />
